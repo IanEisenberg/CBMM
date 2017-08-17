@@ -1,5 +1,7 @@
+from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from sklearn.decomposition import PCA, factor_analysis
 from sklearn.preprocessing import StandardScaler, scale
 
@@ -13,8 +15,11 @@ n_train = int(data.shape[0]*.95)
 
 
 # ***************************************************************************
-# PCA data augmentation
+# helper functions
 # ***************************************************************************
+def tril(square_m):
+    return square_m[np.tril_indices_from(square_m,-1)]
+
 def extrapolate(feature_data, n_neighbors=5, lam=.5):
     extrapolations = feature_data.tolist()
     distances = np.zeros([feature_data.shape[0]]*2)
@@ -86,14 +91,14 @@ def FA_augmentation(data, reps=5, n_components=30, lam=.5):
     augmented_data = np.vstack([scaled_data, new])
     return augmented_data
 
-def autoencoder_augmentation(encoder, decoder, data):
+def autoencoder_augmentation(encoder, decoder, data, reps=5):
     """
     Use an autodecoder to augment data
     
     Augments data by extrapolating between samples in component space
     """
     encoded_vecs = encoder.predict(data)
-    encoded_vecs = extrapolate(encoded_vecs)
+    encoded_vecs = extrapolate(encoded_vecs, reps)
     decoded_vecs = decoder.predict(encoded_vecs)
     return decoded_vecs
 
@@ -102,18 +107,21 @@ def autoencoder_augmentation(encoder, decoder, data):
 # ***************************************************************************
 from keras import regularizers
 from keras.callbacks import EarlyStopping, TensorBoard
-from keras.layers import Input, Dense
+from keras.layers import Input, Dense, Dropout
 from keras.models import Model
-from keras.optimizers import Adam, adadelta
+from keras.optimizers import Adam
 
 # this is our input placeholder
 input_vec = Input(shape=(data.shape[1],))
-def make_autoencoder(input_vec, encoding_dim=100, regularize=False):
+def make_autoencoder(input_vec, encoding_dim=100, regularize=False, 
+                     dropout=False):
     if regularize:
         encoded = Dense(encoding_dim, activation='relu',
                         W_regularizer=regularizers.l1(.001))(input_vec)
     else:
         encoded = Dense(encoding_dim, activation='relu')(input_vec)
+    if dropout:
+        encoded = Dropout(.2)(encoded)
     # "decoded" is the lossy reconstruction of the input
     decoded = Dense(int(input_vec.shape[1]))(encoded)
     autoencoder = Model(input_vec, decoded)
@@ -142,7 +150,7 @@ x_val = scale(data_train[:n_val,:])
 
 # train autoencoder
 autoencoder.fit(x_train, x_train,
-                epochs=5000,
+                epochs=6000,
                 batch_size=200,
                 shuffle=True,
                 validation_data=(x_val, x_val),
@@ -151,14 +159,22 @@ autoencoder.fit(x_train, x_train,
 
 
 # visualize decoding
-import seaborn as sns
 test_data = scale(data_held_out)
 n_test = test_data.shape[0]
 encoded_imgs = encoder.predict(test_data)
 decoded_imgs = decoder.predict(encoded_imgs)
 corr = pd.DataFrame(np.vstack([test_data,decoded_imgs])).T.corr().values
 np.mean(np.diag(corr[n_test:,:n_test]))
+# plot
+plt.figure(figsize=(12,8))
 sns.heatmap(corr)
 
 # augment data
 augmented_data = autoencoder_augmentation(encoder, decoder, scale(data))
+
+# compare augmented data RSA to original data space
+plt.figure(figsize=(12,8))
+plt.scatter(tril(np.corrcoef(scale(data).T)), 
+            tril(np.corrcoef(augmented_data.T)))
+plt.xlabel('Original Data Correlations', fontsize=20)
+plt.ylabel('Augmented Data Correlations', fontsize=20)
