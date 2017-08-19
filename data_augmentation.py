@@ -1,6 +1,6 @@
 # see DATASET AUGMENTATION IN FEATURESPACE (2017) for inspiration
 from keras import regularizers
-from keras.callbacks import EarlyStopping, TensorBoard
+from keras.callbacks import EarlyStopping
 from keras.layers import Input, Dense, Dropout
 from keras.models import Model
 from keras.optimizers import Adam
@@ -8,6 +8,7 @@ from keras.optimizers import Adam
 from itertools import product
 from matplotlib import pyplot as plt
 import numpy as np
+from os import path
 import pandas as pd
 import seaborn as sns
 from sklearn.model_selection import KFold
@@ -21,11 +22,8 @@ data = data_df.values
 n_train = int(data.shape[0]*.95)
 
 np.random.shuffle(data)
-data_train = data[:n_train, :]; np.random.shuffle(data_train)
+data_train = data[:n_train, :]; 
 data_held_out = scale(data[n_train:,:])
-n_val = int(data_train.shape[0]*.1)
-x_train = scale(data_train[n_val:,:])
-x_val = scale(data_train[:n_val,:])
 
 def load_data(filey, percent_train=.95, percent_val=None):
     """
@@ -132,7 +130,8 @@ def run_autoencoder(train, val, dim, l1, epochs=200):
 def KF_CV(data, param_space, splits=5):
     KF = KFold(splits)
     folds = list(KF.split(data))
-    param_combinations = list(product(*param_space.values()))
+    param_combinations = list(product(param_space['dim'],
+                                      param_space['Wl1']))
     param_scores = {}
     # grid search over params
     for d,l in param_combinations:
@@ -150,7 +149,7 @@ def KF_CV(data, param_space, splits=5):
 # ***************************************************************************
 # autoencoder
 # ***************************************************************************
-param_space = {'dim': [100, 200, 300], 'l1': [None, .001, .0001]}
+param_space = {'dim': [100, 200, 300], 'Wl1': [None, .001, .0001]}
 best_params = KF_CV(data_train, param_space, splits=4)
 out, models = run_autoencoder(scale(data_train), None, best_params[0], 
                               best_params[1], epochs=1000)
@@ -181,3 +180,7 @@ plt.scatter(tril(np.corrcoef(scale(data).T)),
             tril(np.corrcoef(augmented_data.T)))
 plt.xlabel('Original Data Correlations', fontsize=20)
 plt.ylabel('Augmented Data Correlations', fontsize=20)
+
+# save augmented data
+augmented_data = pd.DataFrame(augmented_data, columns=data_df.columns)
+augmented_data.to_csv(path.join('Data','augmented_data.csv'))
