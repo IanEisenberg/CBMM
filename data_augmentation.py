@@ -14,8 +14,7 @@ import seaborn as sns
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import scale
 
-data_loc = '/media/Data/Ian/Experiments/expfactory/Self_Regulation_Ontology' \
-            + '/Data/Complete_07-08-2017/meaningful_variables_imputed.csv'
+data_loc = path.join('Data', 'meaningful_variables_imputed.csv')
 
 data_df = pd.read_csv(data_loc, index_col=0)
 data = data_df.values
@@ -24,33 +23,6 @@ n_train = int(data.shape[0]*.95)
 np.random.shuffle(data)
 data_train = data[:n_train, :]; 
 data_held_out = scale(data[n_train:,:])
-
-def load_data(filey, percent_train=.95, percent_val=None):
-    """
-    Loads and separates data into train, test, validation (optional)
-    
-    Keyword arguments:
-    percent_train: the percentage of rows to use for training
-    percent_val: the percentage of training rows to use for validation
-                 if None don't create a validation group
-                 
-    """
-    # load data
-    data_df = pd.read_csv(data_loc, index_col=0)
-    data = data_df.values
-    # determine number of training rows and randomize order of data
-    n_train = int(data.shape[0]*percent_train)
-    np.random.shuffle(data)
-    # separate data into training, test
-    data_train = data[:n_train, :]; np.random.shuffle(data_train)
-    data_held_out = data[n_train:,:]
-    # separate train into validation if percent_val is specified
-    if percent_val:
-        np.random.shuffle(data_train)
-        n_val = int(data_train.shape[0]*percent_val)
-        data_train[:]
-
-    
 
 
 # ***************************************************************************
@@ -117,7 +89,7 @@ def run_autoencoder(train, val, dim, l1, epochs=200):
     # train autoencoder
     out = autoencoder.fit(train, train,
                     epochs=epochs,
-                    batch_size=200,
+                    batch_size=6000,
                     shuffle=True,
                     validation_data=val,
                     verbose=0,
@@ -150,7 +122,7 @@ def KF_CV(data, param_space, splits=5):
 # autoencoder
 # ***************************************************************************
 param_space = {'dim': [100, 200, 300], 'Wl1': [None, .001, .0001]}
-best_params = KF_CV(data_train, param_space, splits=4)
+best_params, param_scores = KF_CV(data_train, param_space, splits=4)
 out, models = run_autoencoder(scale(data_train), None, best_params[0], 
                               best_params[1], epochs=1000)
 
