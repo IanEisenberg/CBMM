@@ -144,15 +144,18 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
     for params in param_combinations:
         sys.stdout.write(str(params))
         CV_scores = []
+        CV_training_lengths = []
         for train_i, val_i in folds:
             x_train = scale(data[train_i,:])
             x_val = scale(data[val_i,:])
             out, models = run_autoencoder(x_train, x_val, 
                                           params, epochs=epochs)
+            CV_training_lengths.append(len(out.history['val_loss']))
             final_score = out.history['val_loss'][-1]
             CV_scores.append(final_score)
             sys.stdout.write('CV score: %s' % final_score)
         params['score'] = np.mean(CV_scores)
+        params['training_length'] = np.mean(CV_training_lengths)
     best_params = min(param_combinations, key=lambda k: k['score'])
     return best_params, param_combinations
     
@@ -160,9 +163,9 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
 # autoencoder
 # ***************************************************************************
 sys.stdout.write('*****Running CV procedure******')
-epochs = 10000
-param_space = {'dim': [50, 150, 250, 350], 'wl1': [0, .001],
-               'al1': [0, .001], 'input_noise': [0,.2,.3],
+epochs = 15000
+param_space = {'dim': [150, 250, 350], 'wl1': [0, .001],
+               'al1': [0], 'input_noise': [0,.2,.3],
                'dropout': [False]}
 
 best_params, param_scores = KF_CV(data_train, param_space, 
@@ -171,7 +174,13 @@ pickle.dump(param_scores,
             open(path.join('output', 
                            'data_augmentation_CV_results_%se.pkl' % epochs), 
                             'wb'))
-out, models = run_autoencoder(scale(data_train), None, best_params, 
+
+np.random.shuffle(data_train)
+KF = KFold(5)
+traini, vali = list(KF.split(data_train))[0]
+train = data_train[traini,:]
+val = data_train[vali,:]
+out, models = run_autoencoder(scale(train), scale(val), best_params, 
                               epochs=epochs, verbose=1)
     
 # ***************************************************************************
@@ -219,8 +228,8 @@ f.savefig(path.join('Plots','augmented_data_corr_comparison.png'))
 # ***************************************************************************
 sys.stdout.write('*****Testing finished. Augmenting Data******')
 
-out, models = run_autoencoder(scale(data), None, best_params,
-                              epochs=epochs, verbose=1)
+out, models = run_autoencoder(scale(data_train), scale(data_held_out), 
+                              best_params, epochs=epochs, verbose=1)
 for name,m in models.items():
     m.save(path.join('output', 'data_augmentation_%s.h5' % name))
     
