@@ -1,7 +1,7 @@
 # see DATASET AUGMENTATION IN FEATURESPACE (2017) for inspiration
 from keras import regularizers
 from keras.callbacks import EarlyStopping
-from keras.layers import Input, Dense, Dropout
+from keras.layers import Input, Dense, Dropout, Lambda
 from keras.models import Model
 from keras.optimizers import Adam
 
@@ -45,16 +45,6 @@ def bootstrap_corr(data, test_size, reps=100):
         corr = np.corrcoef(boot_data.T)
         boot_corrs.append(np.corrcoef(tril(corr), tril(orig_corr))[1,0])
     return boot_corrs
-
-def mask(mat, percentage):
-    """
-    Applies a mask row-wise to matrix, setting a percentage of values to zero
-    """
-    n_blanks = int(mat.shape[1]*percentage)
-    f = lambda n: np.random.choice([0]*n + [1]*(mat.shape[1]-n), 
-                                   mat.shape[1], replace=False)
-    mask = np.vstack([f(n_blanks) for _ in range(mat.shape[0])])
-    return mat*mask
     
 def tril(square_m):
     """ Returns the lower triangle of a matrix as a vector """
@@ -85,14 +75,15 @@ def autoencoder_augmentation(encoder, decoder, data, reps=5):
     return decoded_vecs
 
 def make_autoencoder(input_vec, encoding_dim=100, wregularize=0, 
-                     aregularize=0, dropout=False):
+                     aregularize=0, input_noise=0, dropout=False):
     """
     Creates an autoencoder and its corresponding encoder and decoder
     """
+    corrupted  = Dropout(input_noise)(input_vec)
     encoded = Dense(encoding_dim, activation='sigmoid',
                     kernel_regularizer=regularizers.l1(wregularize),
                     activity_regularizer=regularizers.l1(aregularize)
-                    )(input_vec)
+                    )(corrupted)
     if dropout:
         encoded = Dropout(.2)(encoded)
     # "decoded" is the lossy reconstruction of the input
@@ -115,12 +106,13 @@ def run_autoencoder(train, val, params, epochs=10000, verbose=0):
     al1 = params.get('al1', 0)
     wl1 = params.get('wl1', 0)
     dropout = params.get('dropout', False)
-    noise = params.get('noise', 0)
+    input_noise = params.get('input_noise', 0)
     
     input_vec = Input(shape=(data.shape[1],))
     autoencoder, encoder, decoder = make_autoencoder(input_vec, dim, 
                                                      wregularize=wl1,
                                                      aregularize=al1,
+                                                     input_noise=input_noise,
                                                      dropout=dropout)
     autoencoder.compile(optimizer=Adam(lr=.1, decay=.001), loss='mse')
     if val is not None:
@@ -128,9 +120,8 @@ def run_autoencoder(train, val, params, epochs=10000, verbose=0):
         callbacks = [EarlyStopping(min_delta=.001, patience=500)]
     else:
         callbacks = []
-    train_input = mask(train, noise)
     # train autoencoder
-    out = autoencoder.fit(train_input, train,
+    out = autoencoder.fit(train, train,
                     epochs=epochs,
                     batch_size=epochs,
                     shuffle=True,
@@ -169,12 +160,8 @@ def KF_CV(data, param_space, splits=5):
 # autoencoder
 # ***************************************************************************
 param_space = {'dim': [50, 150, 250, 350], 'wl1': [0, .01, .001, .0001],
-               'al1': [0, .01, .001, .0001], 'noise': [0,.2,.3],
+               'al1': [0, .01, .001, .0001], 'input_noise': [0,.2,.3],
                'dropout': [True, False]}
-
-param_space = {'dim': [350], 'wl1': [0],
-               'al1': [.001], 'noise': [.2],
-               'dropout': [False]}
 
 best_params, param_scores = KF_CV(data_train, param_space, splits=4)
 pickle.dump(param_scores, open(path.join('output', 
