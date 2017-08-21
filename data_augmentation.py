@@ -19,13 +19,11 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 
 # load data
-data_loc = path.join('Data', 'meaningful_variables_imputed.csv')
+data_loc = path.join('Data', 'behavioral_data.csv')
 
 data_df = pd.read_csv(data_loc, index_col=0)
 data = data_df.values
 n_held_out = 50
-
-np.random.shuffle(data)
 data_train = data[n_held_out:, :]; 
 data_held_out = scale(data[:n_held_out,:])
         

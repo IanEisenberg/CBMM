@@ -25,9 +25,13 @@ data = data_df.values
 
 # linear predictor
 rgr = make_pipeline(StandardScaler(), LassoCV())
-rgr.fit(data,)
+rgr.fit(data,targets.Age)
+plt.scatter(targets.Age,rgr.predict(data))
 
-plt.scatter(targets.WeightPounds,rgr.predict(data))
+# no cross validation
+rgr = make_pipeline(StandardScaler(), LinearRegression())
+rgr.fit(data,targets.Age)
+plt.scatter(targets.Age,rgr.predict(data))
 
 # support vector
 rgr = make_pipeline(StandardScaler(), SVR())
