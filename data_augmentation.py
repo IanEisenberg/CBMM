@@ -32,7 +32,11 @@ data_held_out = scale(data[:n_held_out,:])
 # ***************************************************************************
 # helper functions
 # ***************************************************************************
-def bootstrap(data, test_size, reps=100):
+def bootstrap_corr(data, test_size, reps=100):
+    """
+    Bootstraps comparison of 2nd order correlation between large dataset and
+    small sample from it
+    """
     boot_corrs = []
     orig_corr = np.corrcoef(data.T)
     for rep in range(reps):
@@ -43,6 +47,9 @@ def bootstrap(data, test_size, reps=100):
     return boot_corrs
 
 def mask(mat, percentage):
+    """
+    Applies a mask row-wise to matrix, setting a percentage of values to zero
+    """
     n_blanks = int(mat.shape[1]*percentage)
     f = lambda n: np.random.choice([0]*n + [1]*(mat.shape[1]-n), 
                                    mat.shape[1], replace=False)
@@ -50,6 +57,7 @@ def mask(mat, percentage):
     return mat*mask
     
 def tril(square_m):
+    """ Returns the lower triangle of a matrix as a vector """
     return square_m[np.tril_indices_from(square_m,-1)]
 
 def extrapolate(feature_data, n_neighbors=5, lam=.5):
@@ -78,6 +86,9 @@ def autoencoder_augmentation(encoder, decoder, data, reps=5):
 
 def make_autoencoder(input_vec, encoding_dim=100, wregularize=0, 
                      aregularize=0, dropout=False):
+    """
+    Creates an autoencoder and its corresponding encoder and decoder
+    """
     encoded = Dense(encoding_dim, activation='sigmoid',
                     kernel_regularizer=regularizers.l1(wregularize),
                     activity_regularizer=regularizers.l1(aregularize)
@@ -96,6 +107,9 @@ def make_autoencoder(input_vec, encoding_dim=100, wregularize=0,
     return autoencoder, encoder, decoder
 
 def run_autoencoder(train, val, params, epochs=10000, verbose=0):
+    """
+    Trains above autoencoder
+    """
     # unpack params
     dim = params['dim']
     al1 = params.get('al1', 0)
@@ -129,6 +143,9 @@ def run_autoencoder(train, val, params, epochs=10000, verbose=0):
 
 
 def KF_CV(data, param_space, splits=5):
+    """
+    Explores a parameter space using gridsearch using CV
+    """
     KF = KFold(splits)
     folds = list(KF.split(data))
     param_combinations = [dict(zip(param_space, v)) 
@@ -190,7 +207,7 @@ sns.heatmap(corr)
 f.savefig(path.join('Plots','test_reconsturction_performance.png'))
 
 # compare augmented data RSA to original data space
-boot_corrs = bootstrap(data_train, test_data.shape[0], reps=1000)
+boot_corrs = bootstrap_corr(data_train, test_data.shape[0], reps=1000)
 augmented_corr = np.corrcoef(tril(np.corrcoef(scale(data_held_out).T)), 
                              tril(np.corrcoef(augmented_data.T)))[0,1]
 f = plt.figure(figsize=(12,8))
