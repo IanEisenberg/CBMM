@@ -182,8 +182,6 @@ pickle.dump(param_scores, open(path.join('output',
                                          'wb'))
 out, models = run_autoencoder(scale(data_train), None, best_params, 
                               epochs=1000, verbose=1)
-for name,m in models.items():
-    m.save(path.join('output', 'data_augmentation_%s.h5' % name))
     
 # ***************************************************************************
 # test and validate
@@ -227,9 +225,8 @@ f.savefig(path.join('Plots','augmented_data_corr_comparison.png'))
 # augmented_data
 # ***************************************************************************
 
-out, models = run_autoencoder(scale(data), None, best_params[0], 
-                              best_params[1], best_params[2], best_params[3],
-                              epochs=1000)
+out, models = run_autoencoder(scale(data), None, best_params,
+                              epochs=1000, verbose=1)
 for name,m in models.items():
     m.save(path.join('output', 'data_augmentation_%s.h5' % name))
     
