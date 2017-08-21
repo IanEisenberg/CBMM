@@ -17,6 +17,7 @@ import matplotlib
 matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import seaborn as sns
+import sys
 
 # load data
 data_loc = path.join('Data', 'behavioral_data.csv')
@@ -141,7 +142,7 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
                             for v in product(*param_space.values())]
     # grid search over params
     for params in param_combinations:
-        print(params)
+        sys.stdout.write(params)
         CV_scores = []
         for train_i, val_i in folds:
             x_train = scale(data[train_i,:])
@@ -150,7 +151,7 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
                                           params, epochs=epochs)
             final_score = out.history['val_loss'][-1]
             CV_scores.append(final_score)
-            print('CV score: %s' % final_score)
+            sys.stdout.write('CV score: %s' % final_score)
         params['score'] = np.mean(CV_scores)
     best_params = min(param_combinations, key=lambda k: k['score'])
     return best_params, param_combinations
@@ -158,6 +159,7 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
 # ***************************************************************************
 # autoencoder
 # ***************************************************************************
+sys.stdout.write('*****Running CV procedure******')
 epochs = 2000
 param_space = {'dim': [50, 150, 250, 350], 'wl1': [0],
                'al1': [0, .01, .001, .0001], 'input_noise': [0,.2],
@@ -175,6 +177,8 @@ out, models = run_autoencoder(scale(data_train), None, best_params,
 # ***************************************************************************
 # test and validate
 # ***************************************************************************
+sys.stdout.write('*****CV finished. Testing model******')
+
 # visualize decoding
 test_data = scale(data_held_out)
 n_test = test_data.shape[0]
@@ -213,6 +217,7 @@ f.savefig(path.join('Plots','augmented_data_corr_comparison.png'))
 # ***************************************************************************
 # augmented_data
 # ***************************************************************************
+sys.stdout.write('*****Testing finished. Augmenting Data******')
 
 out, models = run_autoencoder(scale(data), None, best_params,
                               epochs=epochs, verbose=1)
