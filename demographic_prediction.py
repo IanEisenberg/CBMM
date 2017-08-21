@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 
 # load data
-data_loc = path.join('Data', 'meaningful_variables_imputed.csv')
+data_loc = path.join('Data', 'behavioral_data.csv')
 target_loc = path.join('Data', 'targets.csv')
 
 targets = pd.DataFrame.from_csv(target_loc, index_col=0)
