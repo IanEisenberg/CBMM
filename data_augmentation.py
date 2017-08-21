@@ -131,12 +131,12 @@ def run_autoencoder(train, val, params, epochs=10000, verbose=0):
                  'decoder': decoder}
 
 
-def KF_CV(data, param_space, splits=5):
+def KF_CV(data, param_space, splits=5, epochs=10000):
     """
     Explores a parameter space using gridsearch using CV
     """
     KF = KFold(splits)
-    folds = list(KF.split(data))
+    folds = list(KF.split(data))[:2]
     param_combinations = [dict(zip(param_space, v)) 
                             for v in product(*param_space.values())]
     # grid search over params
@@ -146,7 +146,7 @@ def KF_CV(data, param_space, splits=5):
         for train_i, val_i in folds:
             x_train = scale(data[train_i,:])
             x_val = scale(data[val_i,:])
-            out, models = run_autoencoder(x_train, x_val, params, epochs=10000)
+            out, models = run_autoencoder(x_train, x_val, params, epochs=epochs)
             final_score = out.history['val_loss'][-1]
             CV_scores.append(final_score)
             print('CV score: %s' % final_score)
@@ -157,16 +157,19 @@ def KF_CV(data, param_space, splits=5):
 # ***************************************************************************
 # autoencoder
 # ***************************************************************************
-param_space = {'dim': [50, 150, 250, 350], 'wl1': [0, .01, .001, .0001],
-               'al1': [0, .01, .001, .0001], 'input_noise': [0,.2,.3],
-               'dropout': [True, False]}
+epochs = 2000
+param_space = {'dim': [50, 150, 250, 350], 'wl1': [0],
+               'al1': [0, .01, .001, .0001], 'input_noise': [0,.2],
+               'dropout': [False]}
 
-best_params, param_scores = KF_CV(data_train, param_space, splits=4)
-pickle.dump(param_scores, open(path.join('output', 
-                                         'data_augmentation_CV_results.pkl'), 
-                                         'wb'))
+best_params, param_scores = KF_CV(data_train, param_space, 
+                                  splits=5, epochs=epochs)
+pickle.dump(param_scores, 
+            open(path.join('output', 
+                           'data_augmentation_CV_results_%se.pkl' % epochs), 
+                            'wb'))
 out, models = run_autoencoder(scale(data_train), None, best_params, 
-                              epochs=1000, verbose=1)
+                              epochs=epochs, verbose=1)
     
 # ***************************************************************************
 # test and validate
@@ -211,7 +214,7 @@ f.savefig(path.join('Plots','augmented_data_corr_comparison.png'))
 # ***************************************************************************
 
 out, models = run_autoencoder(scale(data), None, best_params,
-                              epochs=1000, verbose=1)
+                              epochs=epochs, verbose=1)
 for name,m in models.items():
     m.save(path.join('output', 'data_augmentation_%s.h5' % name))
     
