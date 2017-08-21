@@ -1,7 +1,7 @@
 # see DATASET AUGMENTATION IN FEATURESPACE (2017) for inspiration
 from keras import regularizers
 from keras.callbacks import EarlyStopping
-from keras.layers import Input, Dense, Dropout, Lambda
+from keras.layers import Input, Dense, Dropout
 from keras.models import Model
 from keras.optimizers import Adam
 
@@ -146,7 +146,8 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
         for train_i, val_i in folds:
             x_train = scale(data[train_i,:])
             x_val = scale(data[val_i,:])
-            out, models = run_autoencoder(x_train, x_val, params, epochs=epochs)
+            out, models = run_autoencoder(x_train, x_val, 
+                                          params, epochs=epochs)
             final_score = out.history['val_loss'][-1]
             CV_scores.append(final_score)
             print('CV score: %s' % final_score)
