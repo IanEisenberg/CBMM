@@ -142,7 +142,7 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
                             for v in product(*param_space.values())]
     # grid search over params
     for params in param_combinations:
-        sys.stdout.write(params)
+        sys.stdout.write(str(params))
         CV_scores = []
         for train_i, val_i in folds:
             x_train = scale(data[train_i,:])
@@ -160,9 +160,9 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
 # autoencoder
 # ***************************************************************************
 sys.stdout.write('*****Running CV procedure******')
-epochs = 2000
-param_space = {'dim': [50, 150, 250, 350], 'wl1': [0],
-               'al1': [0, .01, .001, .0001], 'input_noise': [0,.2],
+epochs = 10000
+param_space = {'dim': [50, 150, 250, 350], 'wl1': [0, .001],
+               'al1': [0, .001], 'input_noise': [0,.2,.3],
                'dropout': [False]}
 
 best_params, param_scores = KF_CV(data_train, param_space, 
