@@ -1,5 +1,8 @@
 # mine
-meaningful_variables_imputed.csv
+*.csv
+*h5
+*pkl
+*png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

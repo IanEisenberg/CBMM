@@ -14,10 +14,11 @@ from sklearn.model_selection import KFold
 from sklearn.preprocessing import scale
 
 import matplotlib
-matplotlib.use('GTK')
+matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import seaborn as sns
 
+# load data
 data_loc = path.join('Data', 'meaningful_variables_imputed.csv')
 
 data_df = pd.read_csv(data_loc, index_col=0)
@@ -27,8 +28,6 @@ n_held_out = 50
 np.random.shuffle(data)
 data_train = data[n_held_out:, :]; 
 data_held_out = scale(data[:n_held_out,:])
-
-
         
 # ***************************************************************************
 # helper functions
@@ -43,6 +42,13 @@ def bootstrap(data, test_size, reps=100):
         boot_corrs.append(np.corrcoef(tril(corr), tril(orig_corr))[1,0])
     return boot_corrs
 
+def mask(mat, percentage):
+    n_blanks = int(mat.shape[1]*percentage)
+    f = lambda n: np.random.choice([0]*n + [1]*(mat.shape[1]-n), 
+                                   mat.shape[1], replace=False)
+    mask = np.vstack([f(n_blanks) for _ in range(mat.shape[0])])
+    return mat*mask
+    
 def tril(square_m):
     return square_m[np.tril_indices_from(square_m,-1)]
 
@@ -89,7 +95,14 @@ def make_autoencoder(input_vec, encoding_dim=100, wregularize=0,
     decoder = Model(encoded_input, decoder_layer(encoded_input))
     return autoencoder, encoder, decoder
 
-def run_autoencoder(train, val, dim, wl1, al1, dropout, epochs=100):
+def run_autoencoder(train, val, params, epochs=10000, verbose=0):
+    # unpack params
+    dim = params['dim']
+    al1 = params.get('al1', 0)
+    wl1 = params.get('wl1', 0)
+    dropout = params.get('dropout', False)
+    noise = params.get('noise', 0)
+    
     input_vec = Input(shape=(data.shape[1],))
     autoencoder, encoder, decoder = make_autoencoder(input_vec, dim, 
                                                      wregularize=wl1,
@@ -101,13 +114,14 @@ def run_autoencoder(train, val, dim, wl1, al1, dropout, epochs=100):
         callbacks = [EarlyStopping(min_delta=.001, patience=500)]
     else:
         callbacks = []
+    train_input = mask(train, noise)
     # train autoencoder
-    out = autoencoder.fit(train, train,
+    out = autoencoder.fit(train_input, train,
                     epochs=epochs,
                     batch_size=epochs,
                     shuffle=True,
                     validation_data=val,
-                    verbose=0,
+                    verbose=verbose,
                     callbacks=callbacks)
     return out, {'autoencoder': autoencoder, 
                  'encoder': encoder, 
@@ -117,47 +131,46 @@ def run_autoencoder(train, val, dim, wl1, al1, dropout, epochs=100):
 def KF_CV(data, param_space, splits=5):
     KF = KFold(splits)
     folds = list(KF.split(data))
-    param_combinations = list(product(param_space['dim'],
-                                      param_space['Wl1'],
-                                      param_space['Al1'],
-                                      param_space['dropout']))
-    param_scores = {}
+    param_combinations = [dict(zip(param_space, v)) 
+                            for v in product(*param_space.values())]
     # grid search over params
-    for dim,wl,al,dropout in param_combinations:
-        print('Testing parameters: %s, %s, %s, %s' % (dim,wl,al,dropout))
+    for params in param_combinations:
+        print(params)
         CV_scores = []
         for train_i, val_i in folds:
             x_train = scale(data[train_i,:])
             x_val = scale(data[val_i,:])
-            out, models = run_autoencoder(x_train, x_val, dim, wl, al,
-                                          dropout, epochs=50)
+            out, models = run_autoencoder(x_train, x_val, params, epochs=10000)
             final_score = out.history['val_loss'][-1]
             CV_scores.append(final_score)
             print('CV score: %s' % final_score)
-        param_scores[(dim,wl,al,dropout)] = (np.mean(CV_scores))
-    best_params = min(param_scores, key=lambda k: param_scores[k])
-    return best_params, param_scores
+        params['score'] = np.mean(CV_scores)
+    best_params = min(param_combinations, key=lambda k: k['score'])
+    return best_params, param_combinations
     
 # ***************************************************************************
 # autoencoder
 # ***************************************************************************
-param_space = {'dim': [50, 150, 250, 350], 'Wl1': [0, .01, .001, .0001],
-               'Al1': [0, .01, .001, .0001],
+param_space = {'dim': [50, 150, 250, 350], 'wl1': [0, .01, .001, .0001],
+               'al1': [0, .01, .001, .0001], 'noise': [0,.2,.3],
                'dropout': [True, False]}
+
+param_space = {'dim': [350], 'wl1': [0],
+               'al1': [.001], 'noise': [.2],
+               'dropout': [False]}
+
 best_params, param_scores = KF_CV(data_train, param_space, splits=4)
 pickle.dump(param_scores, open(path.join('output', 
                                          'data_augmentation_CV_results.pkl'), 
                                          'wb'))
-out, models = run_autoencoder(scale(data_train), None, best_params[0], 
-                              best_params[1], best_params[2], best_params[3],
-                              epochs=1000)
+out, models = run_autoencoder(scale(data_train), None, best_params, 
+                              epochs=1000, verbose=1)
 for name,m in models.items():
     m.save(path.join('output', 'data_augmentation_%s.h5' % name))
     
 # ***************************************************************************
-# test
+# test and validate
 # ***************************************************************************
-
 # visualize decoding
 test_data = scale(data_held_out)
 n_test = test_data.shape[0]
@@ -166,15 +179,11 @@ decoded_imgs = models['decoder'].predict(encoded_imgs)
 corr = pd.DataFrame(np.vstack([test_data,decoded_imgs])).T.corr().values
 np.mean(np.diag(corr[n_test:,:n_test]))
 
-# augment data
+# test data augmentation
 augmented_data = autoencoder_augmentation(models['encoder'], 
                                           models['decoder'], 
                                           scale(data))
-
-# save augmented data
-augmented_data = pd.DataFrame(augmented_data, columns=data_df.columns)
-augmented_data.to_csv(path.join('output','augmented_data.csv'))
-
+    
 # plot
 f = plt.figure(figsize=(12,8))
 sns.heatmap(corr)
@@ -197,3 +206,21 @@ plt.xlabel('Original Data Correlations', fontsize=20)
 plt.ylabel('Augmented Data Correlations', fontsize=20)
 f.savefig(path.join('Plots','augmented_data_corr_comparison.png'))
 
+# ***************************************************************************
+# augmented_data
+# ***************************************************************************
+
+out, models = run_autoencoder(scale(data), None, best_params[0], 
+                              best_params[1], best_params[2], best_params[3],
+                              epochs=1000)
+for name,m in models.items():
+    m.save(path.join('output', 'data_augmentation_%s.h5' % name))
+    
+# augment data
+augmented_data = autoencoder_augmentation(models['encoder'], 
+                                          models['decoder'], 
+                                          scale(data))
+
+# save augmented data
+augmented_data = pd.DataFrame(augmented_data, columns=data_df.columns)
+augmented_data.to_csv(path.join('output','augmented_data.csv'))
