@@ -122,7 +122,7 @@ def run_autoencoder(train, val, params, epochs=10000, verbose=0):
     # train autoencoder
     out = autoencoder.fit(train, train,
                     epochs=epochs,
-                    batch_size=epochs,
+                    batch_size=200,
                     shuffle=True,
                     validation_data=val,
                     verbose=verbose,
@@ -163,13 +163,13 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
 # autoencoder
 # ***************************************************************************
 sys.stdout.write('*****Running CV procedure******\n')
-epochs = 15000
-param_space = {'dim': [150, 250, 350], 'wl1': [0, .001],
-               'al1': [0], 'input_noise': [0,.2,.3],
+epochs = 20000
+param_space = {'dim': [150, 186, 250, 350], 'wl1': [0],
+               'al1': [0, .001], 'input_noise': [.1,.2,.3],
                'dropout': [False]}
 
-#best_params = {'dim': 250, 'wl1': 0,
-#               'al1': 0, 'input_noise': .25,
+#best_params = {'dim': 186, 'wl1': 0,
+#               'al1': 0, 'input_noise': .1,
 #               'dropout': False}
 
 best_params, param_scores = KF_CV(data_train, param_space, 
@@ -253,7 +253,7 @@ augmented_data = autoencoder_augmentation(models['encoder'],
                                           scale(data))
 
 # compare augmented data RSA to original data space
-boot_corrs = bootstrap_corr(data_train, test_data.shape[0], reps=1000)
+boot_corrs = bootstrap_corr(data_train, data_held_out.shape[0], reps=1000)
 augmented_corr = np.corrcoef(tril(np.corrcoef(scale(data_held_out).T)), 
                              tril(np.corrcoef(augmented_data.T)))[0,1]
 f = plt.figure(figsize=(12,8))
