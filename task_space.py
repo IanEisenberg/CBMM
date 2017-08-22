@@ -82,19 +82,19 @@ for task in tasks:
         PCA_pipe = make_pipeline(StandardScaler(), PCA(),MultiTaskElasticNetCV())
         scores[task]['PCA_' + k] =  np.mean(cross_val_score(PCA_pipe, 
                                               predictors, target, cv=KF))
-        models[task]['AE_' + k] = PCA_pipe
+        models[task]['PCA_' + k] = PCA_pipe
         
         sys.stdout.write('Running native\n')
         native_pipe = make_pipeline(StandardScaler(), MultiTaskElasticNetCV())
         scores[task]['native_' + k] = np.mean(cross_val_score(native_pipe, 
                                      predictors, target, cv=KF))
-        models[task]['AE_' + k] = PCA_pipe
+        models[task]['native_' + k] = PCA_pipe
     
         sys.stdout.write('Running encoded\n')
         CV_scores, encoded_pipe = CV_autoencode(AE_predictors.values, target.values, 
                                                 encoder, KF)
         scores[task]['encoded_' + k] = np.mean(CV_scores)
-        models[task]['AE_' + k] = encoded_pipe
+        models[task]['encoded_' + k] = encoded_pipe
         
         sys.stdout.write('Running AE\n')
         CV_scores, AE_pipe = CV_autoencode(AE_predictors.values, target.values, 
