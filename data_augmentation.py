@@ -142,7 +142,7 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
                             for v in product(*param_space.values())]
     # grid search over params
     for params in param_combinations:
-        sys.stdout.write(str(params))
+        sys.stdout.write(str(params)+'\n')
         CV_scores = []
         CV_training_lengths = []
         for train_i, val_i in folds:
@@ -153,7 +153,7 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
             CV_training_lengths.append(len(out.history['val_loss']))
             final_score = out.history['val_loss'][-1]
             CV_scores.append(final_score)
-            sys.stdout.write('CV score: %s' % final_score)
+            sys.stdout.write('CV score: %s\n' % final_score)
         params['score'] = np.mean(CV_scores)
         params['training_length'] = np.mean(CV_training_lengths)
     best_params = min(param_combinations, key=lambda k: k['score'])
@@ -162,18 +162,20 @@ def KF_CV(data, param_space, splits=5, epochs=10000):
 # ***************************************************************************
 # autoencoder
 # ***************************************************************************
-sys.stdout.write('*****Running CV procedure******')
+sys.stdout.write('*****Running CV procedure******\n')
 epochs = 15000
 param_space = {'dim': [150, 250, 350], 'wl1': [0, .001],
                'al1': [0], 'input_noise': [0,.2,.3],
                'dropout': [False]}
 
-best_params = {'dim': 250, 'wl1': 0,
-               'al1': 0, 'input_noise': .25,
-               'dropout': False}
+#best_params = {'dim': 250, 'wl1': 0,
+#               'al1': 0, 'input_noise': .25,
+#               'dropout': False}
 
 best_params, param_scores = KF_CV(data_train, param_space, 
                                   splits=5, epochs=epochs)
+sys.stdout.write('Best Params: %s\n' % str(best_params))
+
 pickle.dump(param_scores, 
             open(path.join('output', 
                            'data_augmentation_CV_results_%se.pkl' % epochs), 
@@ -190,7 +192,7 @@ out, models = run_autoencoder(scale(train), scale(val), best_params,
 # ***************************************************************************
 # test and validate
 # ***************************************************************************
-sys.stdout.write('*****CV finished. Testing model******')
+sys.stdout.write('*****CV finished. Testing model******\n')
 
 # visualize decoding
 test_data = scale(data_held_out)
@@ -270,7 +272,7 @@ f.savefig(path.join('Plots','augmented_data_corr_comparison.png'))
 # ***************************************************************************
 # augmented_data
 # ***************************************************************************
-sys.stdout.write('*****Testing finished. Augmenting Data******')
+sys.stdout.write('*****Testing finished. Augmenting Data******\n')
 
 out, models = run_autoencoder(scale(data_train), scale(data_held_out), 
                               best_params, epochs=epochs, verbose=1)
