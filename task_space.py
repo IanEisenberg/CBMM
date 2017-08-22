@@ -1,4 +1,6 @@
 from keras.models import load_model
+import matplotlib
+matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import numpy as np
 from os import path
@@ -11,6 +13,7 @@ from sklearn.model_selection import cross_val_score
 from sklearn.decomposition import PCA
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+import sys
 
 # load AE
 encoder_loc = path.join('output', 'data_augmentation_encoder.h5')
@@ -67,7 +70,7 @@ AE_reuse_quotient = pd.Series(index=trained_data_df.columns,
 for task in tasks:
     print(task)
     for k,v in datasets.items():
-        print(k)
+        sys.stdout.write(k + '\n')
         target = new_data_df.filter(regex = task)
         predictors = v.drop(target.columns, axis=1)
         AE_predictors = v.copy()
@@ -75,25 +78,25 @@ for task in tasks:
         # use to look up AE representation
         target_col_index = [v.columns.get_loc(i) for i in target.columns]
         
-        print('Running PCA')
+        sys.stdout.write('Running PCA\n')
         PCA_pipe = make_pipeline(StandardScaler(), PCA(),MultiTaskElasticNetCV())
         scores[task]['PCA_' + k] =  np.mean(cross_val_score(PCA_pipe, 
                                               predictors, target, cv=KF))
         models[task]['AE_' + k] = PCA_pipe
         
-        print('Running native')
+        sys.stdout.write('Running native\n')
         native_pipe = make_pipeline(StandardScaler(), MultiTaskElasticNetCV())
         scores[task]['native_' + k] = np.mean(cross_val_score(native_pipe, 
                                      predictors, target, cv=KF))
         models[task]['AE_' + k] = PCA_pipe
     
-        print('Running encoded')
+        sys.stdout.write('Running encoded\n')
         CV_scores, encoded_pipe = CV_autoencode(AE_predictors.values, target.values, 
                                                 encoder, KF)
         scores[task]['encoded_' + k] = np.mean(CV_scores)
         models[task]['AE_' + k] = encoded_pipe
         
-        print('Running AE')
+        sys.stdout.write('Running AE\n')
         CV_scores, AE_pipe = CV_autoencode(AE_predictors.values, target.values, 
                                                     AE, KF)
         scores[task]['AE_' + k] = np.mean(CV_scores)
