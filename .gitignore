@@ -1,6 +1,8 @@
 # mine
-h5
-pkl
+.out
+.err
+*h5
+*pkl
 *png
 
 # Byte-compiled / optimized / DLL files
