@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH --job-name=augment_data
+#SBATCH --output=.out/augment_data.job.out
+#SBATCH --error=.err/augment_data.job.err
+#SBATCH --time=10:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
+# SBATCH -p gpu
+# SBATCH --gres=gpu:1
+#SBATCH -p russpold
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=ieisenbe@stanford.edu
+python data_augmentation.py
