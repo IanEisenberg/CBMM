@@ -4,8 +4,11 @@ from keras.models import Model
 from keras import backend as K
 from keras import metrics
 
+import numpy as np
 from os import path
 import pandas as pd
+from scipy.stats import norm
+import seaborn as sns
 from sklearn.preprocessing import scale
 
 # load data
@@ -20,7 +23,7 @@ data_held_out = scale(data[:n_held_out,:])
 # VAE
 batch_size = data_train.shape[0]//5
 original_dim = data_train.shape[1]
-latent_dim = 2
+latent_dim = 4
 intermediate_dim = 50
 epochs = 1000
 epsilon_std = 1.0
@@ -70,19 +73,19 @@ out = vae.fit(data_train, data_train,
                 batch_size=batch_size,
                 validation_data=(data_held_out, data_held_out))
 
+
+from matplotlib import pyplot as plt
+from itertools import product
 x_test_encoded = encoder.predict(data, batch_size=batch_size)
 plt.figure(figsize=(6, 6))
-plt.scatter(x_test_encoded[:, 0], x_test_encoded[:, 1], c=targets.Sex)
-plt.colorbar()
-plt.show()
+plt.scatter(x_test_encoded[:, 0], x_test_encoded[:, 1])
 
-n=50
-grid_x = norm.ppf(np.linspace(0.05, 0.95, n))
-grid_y = norm.ppf(np.linspace(0.05, 0.95, n))
+n=8
+grid=product(*[norm.ppf(np.linspace(0.05, 0.95, n)) 
+                for _ in range(latent_dim)])
 samples = []
-for i, yi in enumerate(grid_x):
-    for j, xi in enumerate(grid_y):
-        z_sample = np.array([[xi, yi]])
+for loc in grid:
+        z_sample = np.array([loc])
         x_decoded = generator.predict(z_sample)
         samples.append(x_decoded)
 samples = np.vstack(samples)

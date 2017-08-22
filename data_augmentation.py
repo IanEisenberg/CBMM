@@ -168,6 +168,10 @@ param_space = {'dim': [150, 250, 350], 'wl1': [0, .001],
                'al1': [0], 'input_noise': [0,.2,.3],
                'dropout': [False]}
 
+best_params = {'dim': 250, 'wl1': 0,
+               'al1': 0, 'input_noise': .25,
+               'dropout': False}
+
 best_params, param_scores = KF_CV(data_train, param_space, 
                                   splits=5, epochs=epochs)
 pickle.dump(param_scores, 
@@ -193,18 +197,58 @@ test_data = scale(data_held_out)
 n_test = test_data.shape[0]
 encoded_imgs = models['encoder'].predict(test_data)
 decoded_imgs = models['decoder'].predict(encoded_imgs)
-corr = pd.DataFrame(np.vstack([test_data,decoded_imgs])).T.corr().values
+corr = pd.DataFrame(np.vstack([scale(data_held_out),decoded_imgs])).T.corr().values
 np.mean(np.diag(corr[n_test:,:n_test]))
-
-# test data augmentation
-augmented_data = autoencoder_augmentation(models['encoder'], 
-                                          models['decoder'], 
-                                          scale(data))
     
 # plot
 f = plt.figure(figsize=(12,8))
 sns.heatmap(corr)
 f.savefig(path.join('Plots','test_reconsturction_performance.png'))
+
+# plot performance drop out as a function of missing data
+def mask(mat, n_blanks):
+    f = lambda n: np.random.choice([0]*n + [1]*(mat.shape[1]-n), 
+                                   mat.shape[1], replace=False)
+    mask = np.vstack([f(n_blanks) for _ in range(mat.shape[0])])
+    return mat*mask
+ 
+mse_results = {}
+corr_results = {}
+input_data = scale(np.repeat(data_held_out,5,0))
+for i in np.arange(0,186,20):
+    test_data = mask(input_data,i)
+    n_test = test_data.shape[0]
+    encoded_imgs = models['encoder'].predict(test_data)
+    decoded_imgs = models['decoder'].predict(encoded_imgs)
+    corr = pd.DataFrame(np.vstack([input_data,decoded_imgs])).T.corr().values
+    mean_corr = np.mean(np.diag(corr[n_test:,:n_test]))
+    mse = np.mean((decoded_imgs-input_data)**2,axis=0)
+    mse_results[i] = mse
+    corr_results[i] = mean_corr
+
+f = plt.figure(figsize = (12,8))
+plt.plot(list(mse_results.keys()), [np.mean(x) for x in mse_results.values()],
+         label='mse', linewidth=3, marker='o')
+plt.plot(list(corr_results.keys()), list(corr_results.values()),
+         label='correlation', linewidth=3, marker='o')
+plt.xlabel('# data points dropped out', fontsize = 25)
+plt.ylabel('Performance', fontsize = 25)
+plt.legend(fontsize=20)
+f.savefig(path.join('Plots','performance_vs_missing.png'))
+
+# save mse results across variables
+error_df = pd.DataFrame(list(mse_results.values()), 
+                        index=mse_results.keys(), columns = data_df.columns)
+# reorder
+error_df = error_df.loc[:,error_df.mean(0).sort_values().index]
+f = plt.figure(figsize = (40,30))
+sns.heatmap(error_df)
+f.savefig(path.join('Plots','performance_per_variable.png'))
+
+# test data augmentation
+augmented_data = autoencoder_augmentation(models['encoder'], 
+                                          models['decoder'], 
+                                          scale(data))
 
 # compare augmented data RSA to original data space
 boot_corrs = bootstrap_corr(data_train, test_data.shape[0], reps=1000)
