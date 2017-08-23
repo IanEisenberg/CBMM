@@ -26,7 +26,12 @@ from keras.preprocessing.image import ImageDataGenerator
 
 # load data
 from keras.datasets import cifar10
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
+data_loc = path.join('Data/cifar10.pkl')
+try:
+    (x_train, y_train), (x_test, y_test) = pickle.load(open(data_loc,'rb'))
+except IOError:    
+    (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+    pickle.dump([(x_train, y_train), (x_test, y_test)], open(data_loc,'wb'))
 # reshape data
 num_classes = len(np.unique(y_train))
 
