@@ -5,7 +5,7 @@ import numpy as np
 from keras.models import Model
 from keras.datasets import cifar10, cifar100
 
-def arbitary_load():
+def arbitrary_load():
     (x_train, y_train), (x_test, y_test) = cifar100.load_data('fine')
     arbitrary_classes = {i:i//5 for i in range(100)}
     y_train = np.array([[arbitrary_classes[i[0]]] for i in y_train])
