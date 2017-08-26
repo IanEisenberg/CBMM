@@ -1,84 +1,43 @@
 # load imports
-from glob import glob
 import h5py
-from os import path, makedirs
-import pandas as pd
+from math import ceil
 import matplotlib
 matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import numpy as np
+from os import path, makedirs
+import pickle
 import seaborn as sns
-from utils.py import get_avg_rep, split_val
+from utils import get_datasets, get_layer_reps, split_val
+
+from scipy.cluster.hierarchy import linkage, dendrogram
+from scipy.spatial.distance import pdist, squareform
 
 import keras
-from keras import regularizers
-from keras.callbacks import ModelCheckpoint
-from keras.layers import Input, Dropout, Flatten, BatchNormalization
-from keras.layers import Dense, Conv2D, MaxPooling2D
-from keras.models import Model, Sequential, load_model
-from keras.optimizers import Adam
-from keras.preprocessing.image import ImageDataGenerator
+from keras.models import load_model
 
-
-# labels
-cifar10_labels = ['airplane','automobile','bird','cat','deer',
-                   'dog','frog','horse','ship','truck']
-
-cifar100_fine_labels = \
-"""
-apples, mushrooms, oranges, pears, sweet peppers, 
-aquarium fish, flatfish, ray, shark, trout, 
-beaver, dolphin, otter, seal, whale, 
-orchids, poppies, roses, sunflowers, tulips, 
-bottles, bowls, cans, cups, plates, 
-clock, computer keyboard, lamp, telephone, television, 
-bed, chair, couch, table, wardrobe, 
-bee, beetle, butterfly, caterpillar, cockroach, 
-bear, leopard, lion, tiger, wolf, 
-bridge, castle, house, road, skyscraper, 
-cloud, forest, mountain, plain, sea, 
-camel, cattle, chimpanzee, elephant, kangaroo, 
-fox, porcupine, possum, raccoon, skunk, 
-crab, lobster, snail, spider, worm, 
-baby, boy, girl, man, woman, 
-crocodile, dinosaur, lizard, snake, turtle, 
-hamster, mouse, rabbit, shrew, squirrel, 
-maple, oak, palm, pine, willow, 
-bicycle, bus, motorcycle, pickup truck, train, 
-lawn-mower, rocket, streetcar, tank, tractor
-"""
-
-cifar100_fine_labels=sorted([i.strip() for i in cifar100_fine_labels.split(',')])
-
-cifar100_coarse_labels=['aquatic mammals', 'fish', 'flowers', 'food', 'fruit', 
-                       'household electrical devices', 'household furniture',
-                       'insects', 'large carnivores', 'large man-made outdoor',
-                       'large natural outdoor scenes', 'large omnivores',
-                       'medium-sized mammals', 'non-insect invertebrates',
-                       'people', 'reptiles', 'small mammals', 'trees', 
-                       'vehicles 1', 'vehicles 2']
-
-# setup
-analysis_dir = '24-08-2017_07-25-13'
-
-# local directory
-#output_dir = path.join('output', analysis_dir)
-# for sherlock
-output_dir = path.join('/mnt/Sherlock_Scratch/CBMM/output', analysis_dir)
-
-# load data
-from keras.datasets import cifar10, cifar100
-datasets = {'cifar10': {'labels': cifar10_labels,
-                        'data': cifar10.load_data()},
-            'cifar100_fine': {'labels': cifar100_fine_labels,
-                        'data': cifar100.load_data('fine')},
-            'cifar100_coarse': {'labels': cifar100_coarse_labels,
-                        'data': cifar100.load_data('coarse')}}
-            
+datasets = get_datasets()
         
+# setup
+analysis_dir = '24-08-2017_17-26-17'
+output_dir = path.join('output',analysis_dir)
+try:
+    makedirs(output_dir)
+    makedirs(path.join(output_dir,'Plots'))
+except OSError:
+    pass
+    
+# local directory
+#input_dir = path.join('output', analysis_dir)
+# for sherlock
+input_dir = path.join('/mnt/Sherlock_Scratch/CBMM/output', analysis_dir)
 
+compare_dataset = 'cifar100_fine'
+n_exemplars = 100
+model_representations = {}
 
-for dataset in datasets.keys()[0:2]:
+# for each dataset extract representations of compare_dataset for each layer
+for i, dataset in enumerate(datasets.keys()):
     print('*'*80)
     print('Loading %s' % dataset)
     print('*'*80)
@@ -86,7 +45,7 @@ for dataset in datasets.keys()[0:2]:
     (x_train, y_train), (x_val, y_val) = split_val(x_train, y_train)
   
     # comparison images
-    compare_labels, compare_data = datasets['cifar100_fine'].values()
+    compare_labels, compare_data = datasets[compare_dataset].values()
     (compare_x_train, compare_y_train), \
         (compare_x_test, compare_y_test) = compare_data
     # reshape data
@@ -94,47 +53,93 @@ for dataset in datasets.keys()[0:2]:
     y_val = keras.utils.to_categorical(y_val, num_classes)
     
     # load model
-    model_file = path.join(output_dir, '%s_model.h5' % dataset)
+    model_file = path.join(input_dir, '%s_model.h5' % dataset)
     with h5py.File(model_file, 'a') as f:
         if 'optimizer_weights' in f.keys():
             del f['optimizer_weights']
+    model = load_model(model_file)
     
     # evaluate model
-    model = load_model(model_file)
+    print('Calculating final accuracy on validation')
     predictions = model.predict(x_val)
     accuracy = np.mean(np.argmax(predictions,1)==np.argmax(y_val,1))
     
     # extract representations at different levels
     # across stimuli
-    layers_of_interest = []
-    for layer in model.layers:
-        if layer.name.find('conv')!=-1 or layer.name.find('dense')!=-1:
-            layers_of_interest.append(layer)
+    print("Getting Representations")
+    rep_loc = path.join(output_dir,'%s_compare_%s_%sreps.pkl'% 
+                                    (dataset,compare_dataset,n_exemplars))
+    if path.exists(rep_loc):
+        layer_reps, layer_names = pickle.load(open(rep_loc,'rb'))
+    else:
+        layer_reps, layer_names = get_layer_reps(model, compare_x_train, 
+                                                 compare_y_train, n_exemplars)
+        pickle.dump((layer_reps, layer_names), open(rep_loc,'wb'))
+    model_representations[dataset] = layer_reps
     
-    layer_reps = {}
-    plt.figure(figsize=(12,8))
-    for i, layer in enumerate(layers_of_interest):
-        submodel = Model(inputs=model.inputs, outputs=layer.output)
-        mean_reps, submodel_reps = get_avg_rep(submodel, 
-                                               compare_x_train,
-                                               compare_y_train,
-                                               10)
-        layer_reps[layer.name] = {'mean': mean_reps, 'all': submodel_reps}
+    print("Plotting")
+    if i==0:
+        # create ordering based on last layer before readout:
+        last_reps = layer_reps[layer_names[-1]]['mean']
+        linkage_mat = linkage(pdist(last_reps, metric='cosine'))
+        leaves = dendrogram(linkage_mat, no_plot=True)['leaves']
+        reordered_labels = [compare_labels[i] for i in leaves]  
+    
+    # plot represention heatmpa
+    f = plt.figure(figsize=(60,50))
+    for i, name in enumerate(layer_names):
+        # get mean_reps for layer and reorder
+        mean_reps = layer_reps[name]['mean'][leaves]
+        plt.subplot(ceil(len(layer_names)/2.0),2,i+1)
         correlation = np.corrcoef(mean_reps)
-        plt.subplot(4,2,i+1)
-        sns.heatmap(correlation, xticklabels=compare_labels)
+        sns.heatmap(correlation, xticklabels='', square=True)
+        plt.yticks(range(len(compare_labels)), reordered_labels, 
+                   fontsize=8+(100/num_classes), rotation=0)
+        plt.title(name, fontsize=20)
     plt.tight_layout()
+    plt.subplots_adjust(top=0.9)
+    plt.suptitle('%s on %s - accuracy:%s%%' % (dataset, compare_dataset, accuracy),
+                 fontsize = 30, y=.95)
+    f.savefig(path.join(output_dir,
+                        'Plots',
+                        '%s_compare_%s_layer_representations.png' \
+                        % (dataset, compare_dataset)))
+    
     
     # extract representations based on weight matrices
     layer_weights = model.layers[1].get_weights()[0]
     plt.imshow(np.sum(layer_weights[:,:,:,0],2))
     
     
+def tril(mat):
+    return mat[np.tril_indices_from(mat, -1)]
 
+overall_reps = []
+labels = []
+rep_layers = layer_names[1:]
+colors = sns.color_palette('Reds',len(rep_layers)) \
+         + sns.color_palette('Greens',len(rep_layers)) \
+         + sns.color_palette('Blues',len(rep_layers))
+         
+for model, val in model_representations.items():
+    for layer in rep_layers:
+        labels.append(model+'_'+layer)
+        overall_reps.append(tril(val[layer]['mean']))
+overall_reps = np.vstack(overall_reps)
 
+from sklearn.cluster import k_means
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+pca = PCA(2)
+tsne = TSNE(2)
+reduced=tsne.fit_transform(overall_reps)
+reduced=pca.fit_transform(overall_reps)
 
+plt.figure(figsize=(12,8))
+plt.scatter(reduced[:,0], reduced[:,1], c=colors, s=150)
 
-
+sns.clustermap(squareform(pdist(overall_reps,'cosine')), 
+               xticklabels=labels, yticklabels=labels)
 
 
 
