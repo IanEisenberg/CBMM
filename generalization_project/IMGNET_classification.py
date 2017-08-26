@@ -3,7 +3,7 @@ from os import path, makedirs
 import numpy as np
 import pickle
 import time
-from utils import arbitrary_load, split_val
+from utils import split_val
 
 import keras
 from keras.callbacks import ModelCheckpoint
@@ -26,7 +26,7 @@ def get_conv_layer(filters, layer_input):
                    activation='relu')(layer)
     layer = BatchNormalization(axis=3)(layer)
     layer = MaxPooling2D()(layer)
-    layer = Dropout(.25)(layer)
+    layer = Dropout(.2)(layer)
     return layer
 
 
@@ -42,8 +42,7 @@ makedirs(output_dir)
 from keras.datasets import cifar10, cifar100
 datasets = {'cifar10': cifar10.load_data,
             'cifar100_fine': lambda: cifar100.load_data('fine'),
-            'cifar100_coarse': lambda: cifar100.load_data('coarse'),
-            'cifar100_arbitrary': arbitrary_load}
+            'cifar100_coarse': lambda: cifar100.load_data('coarse')}
 
 for data, load_fun in datasets.items():
     print('*'*100)
@@ -76,13 +75,16 @@ for data, load_fun in datasets.items():
         layer2 = get_conv_layer(64, layer1)
         layer3 = get_conv_layer(128, layer2)
         flatten = Flatten()(layer3)
-        full1 = Dense(512, activation='relu')(flatten)
+        full1 = Dense(1024, activation='relu')(flatten)
         batch1 = BatchNormalization()(full1)
         drop1 = Dropout(.5)(batch1)
-        full2 = Dense(256, activation='relu')(drop1)
+        full2 = Dense(512, activation='relu')(drop1)
         batch2 = BatchNormalization()(full2)
         drop2 = Dropout(.5)(batch2)
-        readout = Dense(num_classes, activation='softmax', name='readout')(drop2)
+        full3 = Dense(256, activation='relu')(drop2)
+        batch3 = BatchNormalization()(full3)
+        drop3 = Dropout(.5)(batch3)
+        readout = Dense(num_classes, activation='softmax', name='readout')(drop3)
         model=Model(input_img, readout)
         print('Saving base model architecture')
         model.save(path.join(output_dir, 'basemodel_architecture.h5'))

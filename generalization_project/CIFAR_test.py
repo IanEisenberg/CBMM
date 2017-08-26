@@ -35,6 +35,7 @@ input_dir = path.join('/mnt/Sherlock_Scratch/CBMM/output', analysis_dir)
 compare_dataset = 'cifar100_fine'
 n_exemplars = 100
 model_representations = {}
+plot=False
 
 # for each dataset extract representations of compare_dataset for each layer
 for i, dataset in enumerate(datasets.keys()):
@@ -50,6 +51,7 @@ for i, dataset in enumerate(datasets.keys()):
         (compare_x_test, compare_y_test) = compare_data
     # reshape data
     num_classes = len(np.unique(y_test))
+    num_compare_classes = len(np.unique(compare_y_test))
     y_val = keras.utils.to_categorical(y_val, num_classes)
     
     # load model
@@ -84,31 +86,27 @@ for i, dataset in enumerate(datasets.keys()):
         linkage_mat = linkage(pdist(last_reps, metric='cosine'))
         leaves = dendrogram(linkage_mat, no_plot=True)['leaves']
         reordered_labels = [compare_labels[i] for i in leaves]  
-    
-    # plot represention heatmpa
-    f = plt.figure(figsize=(60,50))
-    for i, name in enumerate(layer_names):
-        # get mean_reps for layer and reorder
-        mean_reps = layer_reps[name]['mean'][leaves]
-        plt.subplot(ceil(len(layer_names)/2.0),2,i+1)
-        correlation = np.corrcoef(mean_reps)
-        sns.heatmap(correlation, xticklabels='', square=True)
-        plt.yticks(range(len(compare_labels)), reordered_labels, 
-                   fontsize=8+(100/num_classes), rotation=0)
-        plt.title(name, fontsize=20)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.9)
-    plt.suptitle('%s on %s - accuracy:%s%%' % (dataset, compare_dataset, accuracy),
-                 fontsize = 30, y=.95)
-    f.savefig(path.join(output_dir,
-                        'Plots',
-                        '%s_compare_%s_layer_representations.png' \
-                        % (dataset, compare_dataset)))
-    
-    
-    # extract representations based on weight matrices
-    layer_weights = model.layers[1].get_weights()[0]
-    plt.imshow(np.sum(layer_weights[:,:,:,0],2))
+    if plot==True:
+        # plot represention heatmpa
+        f = plt.figure(figsize=(60,50))
+        for i, name in enumerate(layer_names):
+            # get mean_reps for layer and reorder
+            mean_reps = layer_reps[name]['mean'][leaves]
+            plt.subplot(ceil(len(layer_names)/2.0),2,i+1)
+            correlation = np.corrcoef(mean_reps)
+            sns.heatmap(correlation, xticklabels='', square=True)
+            plt.yticks(range(len(compare_labels)), reordered_labels, 
+                       fontsize=6+(100/num_compare_classes), rotation=0)
+            plt.title(name, fontsize=20)
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9)
+        plt.suptitle('%s on %s - accuracy:%s%%' % (dataset, compare_dataset, 
+                                                   accuracy),
+                     fontsize = 30, y=.95)
+        f.savefig(path.join(output_dir,
+                            'Plots',
+                            '%s_compare_%s_layer_representations.png' \
+                            % (dataset, compare_dataset)))
     
     
 def tril(mat):
@@ -118,21 +116,17 @@ overall_reps = []
 labels = []
 rep_layers = layer_names[1:]
 colors = sns.color_palette('Reds',len(rep_layers)) \
-         + sns.color_palette('Greens',len(rep_layers)) \
-         + sns.color_palette('Blues',len(rep_layers))
+         + sns.color_palette('Blues',len(rep_layers)) \
+         + sns.color_palette('Greens',len(rep_layers))
          
-for model, val in model_representations.items():
+for model, val in model_representations.items()[0:2]:
     for layer in rep_layers:
         labels.append(model+'_'+layer)
         overall_reps.append(tril(val[layer]['mean']))
 overall_reps = np.vstack(overall_reps)
 
-from sklearn.cluster import k_means
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-pca = PCA(2)
-tsne = TSNE(2)
-reduced=tsne.fit_transform(overall_reps)
+pca = PCA(4)
 reduced=pca.fit_transform(overall_reps)
 
 plt.figure(figsize=(12,8))
@@ -141,8 +135,19 @@ plt.scatter(reduced[:,0], reduced[:,1], c=colors, s=150)
 sns.clustermap(squareform(pdist(overall_reps,'cosine')), 
                xticklabels=labels, yticklabels=labels)
 
+for i in range(len(rep_layers)):
+    plt.plot(squareform(pdist(overall_reps,'correlation'))[:8,i])
 
+for i in range(len(rep_layers)):
+    plt.plot(squareform(pdist(overall_reps,'correlation'))[8:,i])
 
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import LinearSegmentedColormap
+cmap1 = LinearSegmentedColormap.from_list("my_colormap", colors, N=6, gamma=1.0)
 
-
-
+fig = plt.figure(figsize=(12,8))
+ax = fig.add_subplot(111, projection='3d')
+Axes3D.scatter(ax,reduced[:8,0], reduced[:8,1], reduced[:8,2], c='red',
+               s=[i**3*6 for i in range(8)])
+Axes3D.scatter(ax,reduced[8:,0], reduced[8:,1], reduced[8:,2], c='blue',
+               s=[i**3*6 for i in range(8)])
