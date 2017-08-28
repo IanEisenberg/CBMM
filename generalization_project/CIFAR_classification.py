@@ -55,7 +55,7 @@ for data, load_fun in datasets.items():
     # reshape data
     num_classes = len(np.unique(y_train))
     y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
+    y_val = keras.utils.to_categorical(y_val, num_classes)
 
     
     # load model and weights or create model architecture
@@ -94,7 +94,7 @@ for data, load_fun in datasets.items():
     
     # fit model
     batch_size = 128
-    epochs = 100
+    epochs = 200
     data_augmentation = True
     
     print('Training the model')
@@ -132,9 +132,10 @@ for data, load_fun in datasets.items():
                                      batch_size=batch_size),
                         steps_per_epoch=x_train.shape[0] // batch_size,
                         epochs=epochs,
-                        validation_data=(x_test, y_test),
+                        validation_data=(x_val, y_val),
                         callbacks=[save_callback])
     end = time.time()
     print("Model took %0.2f seconds to train"%(end - start))
     model.save(path.join(output_dir, '%s_model.h5' % data))
-    pickle.dump(out.history, open(path.join(output_dir, '%s_modelhistory.pkl' % data), 'wb'))
+    pickle.dump(out.history, open(path.join(output_dir, '%s_modelhistory.pkl'\
+                                            % data), 'wb'))

@@ -19,7 +19,7 @@ from keras.models import load_model
 datasets = get_datasets()
         
 # setup
-analysis_dir = '24-08-2017_17-26-17'
+analysis_dir = '26-08-2017_14-07-46'
 output_dir = path.join('output',analysis_dir)
 try:
     makedirs(output_dir)
@@ -35,7 +35,7 @@ input_dir = path.join('/mnt/Sherlock_Scratch/CBMM/output', analysis_dir)
 compare_dataset = 'cifar100_fine'
 n_exemplars = 100
 model_representations = {}
-plot=False
+plot=True
 
 # for each dataset extract representations of compare_dataset for each layer
 for i, dataset in enumerate(datasets.keys()):
@@ -56,6 +56,9 @@ for i, dataset in enumerate(datasets.keys()):
     
     # load model
     model_file = path.join(input_dir, '%s_model.h5' % dataset)
+    if not path.exists(model_file):
+        print("%s wasn't found" % model_file)
+        continue
     with h5py.File(model_file, 'a') as f:
         if 'optimizer_weights' in f.keys():
             del f['optimizer_weights']
@@ -82,7 +85,7 @@ for i, dataset in enumerate(datasets.keys()):
     print("Plotting")
     if i==0:
         # create ordering based on last layer before readout:
-        last_reps = layer_reps[layer_names[-1]]['mean']
+        last_reps = layer_reps[layer_names[-1]]['flat_mean']
         linkage_mat = linkage(pdist(last_reps, metric='cosine'))
         leaves = dendrogram(linkage_mat, no_plot=True)['leaves']
         reordered_labels = [compare_labels[i] for i in leaves]  
@@ -91,7 +94,7 @@ for i, dataset in enumerate(datasets.keys()):
         f = plt.figure(figsize=(60,50))
         for i, name in enumerate(layer_names):
             # get mean_reps for layer and reorder
-            mean_reps = layer_reps[name]['mean'][leaves]
+            mean_reps = layer_reps[name]['flat_mean'][leaves]
             plt.subplot(ceil(len(layer_names)/2.0),2,i+1)
             correlation = np.corrcoef(mean_reps)
             sns.heatmap(correlation, xticklabels='', square=True)
@@ -115,39 +118,61 @@ def tril(mat):
 overall_reps = []
 labels = []
 rep_layers = layer_names[1:]
-colors = sns.color_palette('Reds',len(rep_layers)) \
-         + sns.color_palette('Blues',len(rep_layers)) \
-         + sns.color_palette('Greens',len(rep_layers))
+nl = len(rep_layers) # number of layers
+colors = sns.color_palette('Reds',nl) \
+         + sns.color_palette('Blues',nl) \
+         + sns.color_palette('Greens',nl) \
+         + sns.color_palette('Oranges',nl)
          
-for model, val in model_representations.items()[0:2]:
+for model, val in model_representations.items()[0:3]:
     for layer in rep_layers:
         labels.append(model+'_'+layer)
-        overall_reps.append(tril(val[layer]['mean']))
+        overall_reps.append(tril(val[layer]['flat_mean']))
 overall_reps = np.vstack(overall_reps)
 
 from sklearn.decomposition import PCA
 pca = PCA(4)
 reduced=pca.fit_transform(overall_reps)
 
-plt.figure(figsize=(12,8))
-plt.scatter(reduced[:,0], reduced[:,1], c=colors, s=150)
-
-sns.clustermap(squareform(pdist(overall_reps,'cosine')), 
+# clustermap of correlation distances
+f=sns.clustermap(squareform(pdist(overall_reps,'correlation')), 
                xticklabels=labels, yticklabels=labels)
+f.savefig(path.join(output_dir,'Plots','compare_%s_clustermap.png' \
+                    % (compare_dataset)))
 
-for i in range(len(rep_layers)):
-    plt.plot(squareform(pdist(overall_reps,'correlation'))[:8,i])
+# distance plots, not saved
+f = plt.figure(figsize=(12,8))
+for i in range(nl):
+    plt.plot(squareform(pdist(overall_reps,'correlation'))[:nl,i],
+             label=labels[i], linewidth=3)
+plt.legend()
 
-for i in range(len(rep_layers)):
-    plt.plot(squareform(pdist(overall_reps,'correlation'))[8:,i])
+f = plt.figure(figsize=(12,8))
+for i in range(nl):
+    plt.plot(squareform(pdist(overall_reps,'correlation'))[nl:,i],
+            label=labels[i], linewidth=3)
+plt.legend()
 
+# 3d scatter
 from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.colors import LinearSegmentedColormap
-cmap1 = LinearSegmentedColormap.from_list("my_colormap", colors, N=6, gamma=1.0)
 
 fig = plt.figure(figsize=(12,8))
 ax = fig.add_subplot(111, projection='3d')
-Axes3D.scatter(ax,reduced[:8,0], reduced[:8,1], reduced[:8,2], c='red',
-               s=[i**3*6 for i in range(8)])
-Axes3D.scatter(ax,reduced[8:,0], reduced[8:,1], reduced[8:,2], c='blue',
-               s=[i**3*6 for i in range(8)])
+Axes3D.scatter(ax,reduced[:nl,0], reduced[:nl,1], 
+                          reduced[:nl,2], c='red',
+               s=[i**2.5*6 for i in range(nl)], 
+               label=model_representations.keys()[0])
+Axes3D.scatter(ax,reduced[nl:nl*2,0], reduced[nl:nl*2,1], 
+                          reduced[nl:nl*2,2], c='blue',
+               s=[i**2.5*6 for i in range(nl)],
+               label=model_representations.keys()[1])
+Axes3D.scatter(ax,reduced[nl*2:nl*3,0], reduced[nl*2:nl*3,1], 
+                          reduced[nl*2:nl*3,2], c='green',
+               s=[i**2.5*6 for i in range(nl)],
+               label=model_representations.keys()[2])
+ax.set_xlabel('PC 1')
+ax.set_ylabel('PC 2')
+ax.set_zlabel('PC 3')
+plt.legend()
+fig.savefig(path.join(output_dir,'Plots','compare_%s_3Dplot.png' \
+                    % (compare_dataset)))
