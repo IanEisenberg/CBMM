@@ -14,6 +14,7 @@ from utils import get_datasets, get_sample_layer_reps, get_sample_coords, split_
 from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import pdist, squareform
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 import keras
 from keras.models import load_model
@@ -21,7 +22,7 @@ from keras.models import load_model
 datasets = get_datasets()
         
 # setup
-analysis_dir = '26-08-2017_14-07-46'
+analysis_dir = '29-08-2017_17-07-57'
 output_dir = path.join('output',analysis_dir)
 try:
     makedirs(output_dir)
@@ -96,19 +97,52 @@ print('Plotting')
 pca = PCA(2)
 color_palette = sns.color_palette('hls',20)
 colors = [color_palette[i[0]] for i in compare_y_train]
+layer_reps = model_reps['cifar100_arbitrary']
 f = plt.figure(figsize=(30,20))
-for i, name in enumerate(layer_names):
-    rep = layer_reps[name]
-    pca.fit(rep)
-    PCA_rep = pca.transform(rep)
+for i, name in enumerate(layer_names[:-1]):
+    layers = [(k,v[name]) for k,v in model_reps.items()]
     plt.subplot(5,4,i+1)
-    plt.scatter(PCA_rep[:,0], PCA_rep[:,1], c=colors)
+    for j, (model, rep) in enumerate(layers):
+        if j<10:
+            pca.fit(rep)
+        PCA_rep = pca.transform(rep)
+        plt.scatter(PCA_rep[:,0], PCA_rep[:,1], c=['m','c','r'][j],
+                    label=model, alpha=.3)
     plt.title(name,fontsize=20)
+    if i==0:
+        plt.legend()
+f.savefig(path.join(output_dir, 'Plots', 
+                    'sample_layer_model_distributions.png'))
+
+print('Plotting')
+pca = PCA(2)
+color_palette = sns.color_palette('hls',20)
+colors = [color_palette[i[0]] for i in compare_y_train]
+layer_reps = model_reps['cifar100_arbitrary']
+f = plt.figure(figsize=(30,20))
+for i, name in enumerate(layer_names[:-1]):
+    layers = [(k,v[name]) for k,v in model_reps.items()]
+    plt.subplot(5,4,i+1)
+    layer_mat = np.zeros((compare_samples*len(layers),3))
+    for j, (model, rep) in enumerate(layers):
+        if j==0:
+            pca.fit(rep)
+        PCA_rep = pca.transform(rep)
+        plt.scatter(PCA_rep[:,0], PCA_rep[:,1], c=['m','c','r'][j],
+                    label=model, alpha=.4)
+        layer_mat[j*1000:(j+1)*1000,:2] = PCA_rep
+        layer_mat[j*1000:(j+1)*1000,2] = j
+    plt.title(name,fontsize=20)
+    if i==0:
+        plt.legend()
+f.savefig(path.join(output_dir, 'Plots', 
+                    'sample_layer_model_distributions.png'))
 
 
 plot_distances = []
 for i in range(len(layer_names)):
-    plot_distances.append(squareform(pdist(np.vstack(model_distances.values())[i:80:20],'correlation')))
+    distances=pdist(np.vstack(model_distances.values())[i:80:20],'correlation')
+    plot_distances.append(squareform(distances))
 
 # plot separate distance graphs for each layer
 f = plt.figure(figsize=(30,20))
@@ -116,7 +150,7 @@ for i, name in enumerate(layer_names):
     plt.subplot(5,4,i+1)
     if i>15:
         sns.heatmap(plot_distances[i], vmin=0, vmax=1, square=True,
-                    cbar=False, xticklabels=datasets.keys(),
+                    cbar=False, xticklabels=model_distances.keys(),
                     yticklabels='')
     else:
         sns.heatmap(plot_distances[i], vmin=0, vmax=1, square=True, 
@@ -127,7 +161,8 @@ plt.tight_layout()
 plt.subplots_adjust(top=0.9)
 plt.suptitle('Similarity Across Layers', fontsize=30)
 
-f.savefig(path.join(output_dir, 'Plots', 'sample_layer_model_distances_squareform.png'))
+f.savefig(path.join(output_dir, 'Plots', 
+                    'sample_layer_model_distances_squareform.png'))
 
 # another visualization of the above
 model_combos = list(itertools.combinations(enumerate(model_distances.keys()),2))

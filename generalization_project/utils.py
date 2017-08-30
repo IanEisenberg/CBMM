@@ -176,7 +176,8 @@ def get_datasets():
 
 def convert_IDs_to_num(Y):
     lookup = {val: i for i,val in enumerate(sorted(np.unique(Y)))}
-    return [lookup[y] for y in Y], lookup
+    reverse_lookup = {v:k for k,v in lookup.items()}
+    return [lookup[y] for y in Y], reverse_lookup
     
 def load_tiny_imgnet_labels():
     labels=np.genfromtxt('words.txt',dtype='str', delimiter='\t')
@@ -185,6 +186,14 @@ def load_tiny_imgnet_labels():
 
 def get_tiny_imgnet_label(labels,ID):
     return labels[ID.split('_')[0]]
+
+def convert_to_higher_id(hierarchy_file,IDs,levels=1):
+    hierarchy = np.genfromtxt(hierarchy_file, dtype='str')
+    hierarchy = {k:v for v,k in hierarchy}
+    new_IDs = IDs
+    for _ in range(levels):
+        new_IDs = [hierarchy[i] for i in new_IDs]
+    return new_IDs
 
 def load_tiny_imgnet():
     data={}

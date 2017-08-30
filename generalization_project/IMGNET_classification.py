@@ -3,7 +3,7 @@ from os import path, makedirs
 import numpy as np
 import pickle
 import time
-from utils import convert_IDs_to_num, load_tiny_imgnet
+from utils import convert_to_higher_id, convert_IDs_to_num, load_tiny_imgnet
 
 import keras
 from keras.callbacks import ModelCheckpoint
@@ -45,16 +45,9 @@ print("Loading Data")
 (xval, classval, bbval), \
 (xtest, classtest, bbtest) = load_tiny_imgnet()
 
-# convert string ids to numeric ids
-classtrain, lookup = convert_IDs_to_num(classtrain)
-classval, lookup = convert_IDs_to_num(classval)
 
-# reshape data
-num_classes = len(np.unique(classtrain))
-classtrain = keras.utils.to_categorical(classtrain, num_classes)
-classval = keras.utils.to_categorical(classval, num_classes)
-
-
+# create dictionary of models with their test data
+models = {}
 # create model architecture
 print('Model setup')
 image_shape = (64,64,3)
@@ -69,38 +62,45 @@ drop1 = Dropout(.5)(batch1)
 full2 = Dense(256, activation='relu')(drop1)
 batch2 = BatchNormalization()(full2)
 drop2 = Dropout(.5)(batch2)
-# for classification
-readout_class = Dense(num_classes, activation='softmax', name='readout')(drop2)
+base_model=Model(input_img, drop2)
+
 # for bounding box
-readout_bb = Dense(4, activation='linear', name='readout')(drop2)
+readout_bb = Dense(4, activation='linear', name='readout')
+bb_model=Model(base_model.input, readout_bb(base_model.layers[-1].output))
+models['bb'] = {'model': bb_model,
+                'test_data': (bbtrain, bbval, bbtest)}
+# for classification at different hierarchies
+hierarchical_models = {}
+for level in range(3):
+    # replace labels with higher-order classes
+    hclass_train = convert_to_higher_id('wordnet.is_a.txt', classtrain, level)
+    hclass_val = convert_to_higher_id('wordnet.is_a.txt', classval, level)
+    hclass_test = convert_to_higher_id('wordnet.is_a.txt', classtest, level)
+    # convert strings to numeric ids
+    hclass_train, lookup = convert_IDs_to_num(hclass_train)
+    hclass_val, lookup = convert_IDs_to_num(hclass_val)
+    hclass_test, lookup = convert_IDs_to_num(hclass_test)
+    # convert to one-hot representation
+    num_classes = len(np.unique(hclass_train))
+    onehot_train = keras.utils.to_categorical(hclass_train, num_classes)
+    onehot_val = keras.utils.to_categorical(hclass_val, num_classes)
+    onehot_test = keras.utils.to_categorical(hclass_test, num_classes)
+    
+    readout_class = Dense(num_classes, activation='softmax', name='readout')
+    class_model=Model(base_model.input, 
+                      readout_class(base_model.layers[-1].output))
+    models['hierarchy_%s' % level] = {'model': class_model,
+                                      'test_data': (onehot_train, 
+                                                    onehot_val, 
+                                                    onehot_test)}
+    
 
-class_model=Model(input_img, readout_class)
-bb_model=Model(input_img, readout_bb)
 
-opt = keras.optimizers.Adam(lr=0.001)
-class_model.compile(optimizer=opt, 
-                      loss='categorical_crossentropy', 
-                      metrics=['accuracy'])
-bb_model.compile(optimizer=opt, 
-                  loss='mean_squared_error', 
-                  metrics=['accuracy'])
-
-
+print('Training the models')
 # fit model
 batch_size = 300
-epochs = 200
+epochs = 100
 
-print('Training the model')
-start = time.time()
-makedirs(path.join(output_dir,'classification_checkpoints')) # save checkpoint dir
-save_classcallback = ModelCheckpoint(path.join(output_dir,
-                                          'classification_checkpoints',
-                                          'classification_weights.{epoch:03d}.h5'),
-                                    save_weights_only=True, period=5)
-save_bbcallback = ModelCheckpoint(path.join(output_dir,
-                                          'bb_checkpoints',
-                                          'bb_weights.{epoch:03d}.h5'),
-                                    save_weights_only=True, period=5)
 # This will do preprocessing and realtime data augmentation:
 datagen = ImageDataGenerator(
     zoom_range=.2,
@@ -109,36 +109,41 @@ datagen = ImageDataGenerator(
     height_shift_range=0.1,
     horizontal_flip=True) 
 
-# Compute quantities required for feature-wise normalization
-# (std, mean, and principal components if ZCA whitening is applied).
-datagen.fit(xtrain, seed=202013)
 
-class_out = class_model.fit_generator(datagen.flow(xtrain, classtrain,
-                                                   batch_size=batch_size),
-                                    steps_per_epoch=xtrain.shape[0] // batch_size,
-                                    epochs=epochs,
-                                    validation_data=(xval, classval),
-                                    callbacks=[save_classcallback])
+for name, val in models.items():
+    model, (ytrain, yval, ytest) = val.values()
+    
+    # compile model
+    opt = keras.optimizers.Adam(lr=0.001)
+    if 'hierarchy' in name:
+        model.compile(optimizer=opt, 
+                          loss='categorical_crossentropy', 
+                          metrics=['accuracy'])
+    else:
+        model.compile(optimizer=opt, 
+                  loss='mean_squared_error', 
+                  metrics=['accuracy'])
+    
+    # Compute quantities required for feature-wise normalization
+    # (std, mean, and principal components if ZCA whitening is applied).
+    datagen.fit(xtrain, seed=202013)
 
-class_model.save(path.join(output_dir, 'classification_model.h5'))
-pickle.dump(class_out.history, open(path.join(output_dir, 
-                                        'classification_modelhistory.pkl'), 
-                                        'wb'))
+    # run model
+    makedirs(path.join(output_dir,'%s_checkpoints' % name)) # save checkpoint dir
+    save_classcallback = ModelCheckpoint(path.join(output_dir,
+                                              '%s_checkpoints' % name,
+                                              '%s_weights.{epoch:03d}.h5' % name),
+                                        save_weights_only=True, period=5)
+        
+    out = model.fit_generator(datagen.flow(xtrain, ytrain, batch_size=batch_size),
+                              steps_per_epoch=xtrain.shape[0] // batch_size,
+                              epochs=epochs,
+                              validation_data=(xval, yval),
+                              callbacks=[save_classcallback])
 
-datagen.fit(xtrain, seed=202013)
-bb_out = bb_model.fit_generator(datagen.flow(xtrain, bbtrain,
-                                             batch_size=batch_size),
-                                steps_per_epoch=xtrain.shape[0] // batch_size,
-                                epochs=epochs,
-                                validation_data=(xval, bbval),
-                                callbacks=[save_bbcallback])
-
-bb_model.save(path.join(output_dir, 'bb_model.h5'))
-pickle.dump(bb_out.history, open(path.join(output_dir, 
-                                        'bb_modelhistory.pkl'), 
-                                        'wb'))
-
-end = time.time()
-print("Model took %0.2f seconds to train"%(end - start))
-
+    model.save(path.join(output_dir, '%s.h5' % name))
+    pickle.dump(out.history, open(path.join(output_dir, 
+                                            '%s_modelhistory.pkl' % name), 
+                                            'wb'))
+    
 
