@@ -52,6 +52,7 @@ compare_y_train = compare_y_train[compare_index,::]
 
 # for each dataset extract representations of compare_dataset for each layer
 model_distances = {}
+model_reps = {}
 for i, dataset in enumerate(datasets.keys()):
     print('*'*80)
     print('Loading %s' % dataset)
@@ -73,11 +74,16 @@ for i, dataset in enumerate(datasets.keys()):
         if 'optimizer_weights' in f.keys():
             del f['optimizer_weights']
     model = load_model(model_file)
+    
+    # get representations per layer
     if i == 0:
         sample_coords = get_sample_coords(model, compare_x_train.shape[0])
     layer_reps, layer_names = get_sample_layer_reps(model, 
                                                    compare_x_train, 
                                                    sample_coords)
+    model_reps[dataset] = layer_reps
+    
+    # create distance vectors per layer
     layer_distances = []
     for name in layer_names:
         layer_rep = layer_reps[name]

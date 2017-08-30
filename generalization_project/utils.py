@@ -10,13 +10,6 @@ from PIL import Image
 from keras.models import Model
 from keras.datasets import cifar10, cifar100
 
-def arbitrary_load():
-    (x_train, y_train), (x_test, y_test) = cifar100.load_data('fine')
-    arbitrary_classes = {i:i//5 for i in range(100)}
-    y_train = np.array([[arbitrary_classes[i[0]]] for i in y_train])
-    y_test = np.array([[arbitrary_classes[i[0]]] for i in y_test])
-    return (x_train, y_train), (x_test, y_test)
-    
 def get_avg_rep(submodel, X, Y, n_exemplars):
     """
     Return the average output of a submodel for each unique class in Y. 
@@ -34,53 +27,6 @@ def get_avg_rep(submodel, X, Y, n_exemplars):
     mean_reps = np.array([np.mean(r,0) for r in reps])
     return mean_reps, reps
 
-def get_datasets():
-    
-    # labels
-    cifar10_labels = ['airplane','automobile','bird','cat','deer',
-                       'dog','frog','horse','ship','truck']
-    cifar100_fine_labels = \
-    """
-    apples, mushrooms, oranges, pears, sweet peppers, 
-    aquarium fish, flatfish, ray, shark, trout, 
-    beaver, dolphin, otter, seal, whale, 
-    orchids, poppies, roses, sunflowers, tulips, 
-    bottles, bowls, cans, cups, plates, 
-    clock, computer keyboard, lamp, telephone, television, 
-    bed, chair, couch, table, wardrobe, 
-    bee, beetle, butterfly, caterpillar, cockroach, 
-    bear, leopard, lion, tiger, wolf, 
-    bridge, castle, house, road, skyscraper, 
-    cloud, forest, mountain, plain, sea, 
-    camel, cattle, chimpanzee, elephant, kangaroo, 
-    fox, porcupine, possum, raccoon, skunk, 
-    crab, lobster, snail, spider, worm, 
-    baby, boy, girl, man, woman, 
-    crocodile, dinosaur, lizard, snake, turtle, 
-    hamster, mouse, rabbit, shrew, squirrel, 
-    maple, oak, palm, pine, willow, 
-    bicycle, bus, motorcycle, pickup truck, train, 
-    lawn-mower, rocket, streetcar, tank, tractor
-    """
-    cifar100_fine_labels=sorted([i.strip() for i in cifar100_fine_labels.split(',')])
-    cifar100_coarse_labels=['aquatic mammals', 'fish', 'flowers', 'food', 'fruit', 
-                           'household electrical devices', 'household furniture',
-                           'insects', 'large carnivores', 'large man-made outdoor',
-                           'large natural outdoor scenes', 'large omnivores',
-                           'medium-sized mammals', 'non-insect invertebrates',
-                           'people', 'reptiles', 'small mammals', 'trees', 
-                           'vehicles 1', 'vehicles 2']
-    # load data
-    datasets = {'cifar10': {'labels': cifar10_labels,
-                            'data': cifar10.load_data()},
-                'cifar100_fine': {'labels': cifar100_fine_labels,
-                            'data': cifar100.load_data('fine')},
-                'cifar100_coarse': {'labels': cifar100_coarse_labels,
-                            'data': cifar100.load_data('coarse')},
-                'cifar100_arbitrary': {'labels': ['group%s' % i for i in range(20)],
-                                       'data': arbitrary_load()}}
-    return datasets
-            
 def get_layer_reps(model, X, Y, n_exemplars):
     layers_of_interest = []
     for layer in model.layers:
@@ -166,6 +112,65 @@ def split_val(x_train, y_train):
     (x_train, y_train), (x_val, y_val) = (x_train[:split], y_train[:split]), \
                                          (x_train[split:], y_train[split:])
     return (x_train, y_train), (x_val, y_val)
+
+#****************************************************************************
+    # Dataset helper functions
+##****************************************************************************
+
+def arbitrary_load():
+    (x_train, y_train), (x_test, y_test) = cifar100.load_data('fine')
+    arbitrary_classes = {i:i//5 for i in range(100)}
+    y_train = np.array([[arbitrary_classes[i[0]]] for i in y_train])
+    y_test = np.array([[arbitrary_classes[i[0]]] for i in y_test])
+    return (x_train, y_train), (x_test, y_test)
+
+def get_datasets():
+    
+    # labels
+    cifar10_labels = ['airplane','automobile','bird','cat','deer',
+                       'dog','frog','horse','ship','truck']
+    cifar100_fine_labels = \
+    """
+    apples, mushrooms, oranges, pears, sweet peppers, 
+    aquarium fish, flatfish, ray, shark, trout, 
+    beaver, dolphin, otter, seal, whale, 
+    orchids, poppies, roses, sunflowers, tulips, 
+    bottles, bowls, cans, cups, plates, 
+    clock, computer keyboard, lamp, telephone, television, 
+    bed, chair, couch, table, wardrobe, 
+    bee, beetle, butterfly, caterpillar, cockroach, 
+    bear, leopard, lion, tiger, wolf, 
+    bridge, castle, house, road, skyscraper, 
+    cloud, forest, mountain, plain, sea, 
+    camel, cattle, chimpanzee, elephant, kangaroo, 
+    fox, porcupine, possum, raccoon, skunk, 
+    crab, lobster, snail, spider, worm, 
+    baby, boy, girl, man, woman, 
+    crocodile, dinosaur, lizard, snake, turtle, 
+    hamster, mouse, rabbit, shrew, squirrel, 
+    maple, oak, palm, pine, willow, 
+    bicycle, bus, motorcycle, pickup truck, train, 
+    lawn-mower, rocket, streetcar, tank, tractor
+    """
+    cifar100_fine_labels=sorted([i.strip() for i in cifar100_fine_labels.split(',')])
+    cifar100_coarse_labels=['aquatic mammals', 'fish', 'flowers', 'food', 'fruit', 
+                           'household electrical devices', 'household furniture',
+                           'insects', 'large carnivores', 'large man-made outdoor',
+                           'large natural outdoor scenes', 'large omnivores',
+                           'medium-sized mammals', 'non-insect invertebrates',
+                           'people', 'reptiles', 'small mammals', 'trees', 
+                           'vehicles 1', 'vehicles 2']
+    # load data
+    datasets = {'cifar10': {'labels': cifar10_labels,
+                            'data': cifar10.load_data()},
+                'cifar100_fine': {'labels': cifar100_fine_labels,
+                            'data': cifar100.load_data('fine')},
+                'cifar100_coarse': {'labels': cifar100_coarse_labels,
+                            'data': cifar100.load_data('coarse')},
+                'cifar100_arbitrary': {'labels': ['group%s' % i for i in range(20)],
+                                       'data': arbitrary_load()}}
+    return datasets
+
 
 # tiny imgnet helper functions
 

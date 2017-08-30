@@ -110,12 +110,11 @@ for data, load_fun in datasets.items():
         rotation_range=0,  
         width_shift_range=0.1, 
         height_shift_range=0.1,
-        horizontal_flip=True,
-        seed = 202013) 
+        horizontal_flip=True) 
 
     # Compute quantities required for feature-wise normalization
     # (std, mean, and principal components if ZCA whitening is applied).
-    datagen.fit(x_train)
+    datagen.fit(x_train, seed=202013)
     
     out = model.fit_generator(datagen.flow(x_train, y_train,
                                  batch_size=batch_size),

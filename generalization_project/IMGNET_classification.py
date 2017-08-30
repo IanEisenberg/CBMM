@@ -107,12 +107,11 @@ datagen = ImageDataGenerator(
     rotation_range=0,  
     width_shift_range=0.1, 
     height_shift_range=0.1,
-    horizontal_flip=True, 
-    seed = 131301) 
+    horizontal_flip=True) 
 
 # Compute quantities required for feature-wise normalization
 # (std, mean, and principal components if ZCA whitening is applied).
-datagen.fit(xtrain)
+datagen.fit(xtrain, seed=202013)
 
 class_out = class_model.fit_generator(datagen.flow(xtrain, classtrain,
                                                    batch_size=batch_size),
@@ -126,7 +125,7 @@ pickle.dump(class_out.history, open(path.join(output_dir,
                                         'classification_modelhistory.pkl'), 
                                         'wb'))
 
-datagen.fit(xtrain)
+datagen.fit(xtrain, seed=202013)
 bb_out = bb_model.fit_generator(datagen.flow(xtrain, bbtrain,
                                              batch_size=batch_size),
                                 steps_per_epoch=xtrain.shape[0] // batch_size,
