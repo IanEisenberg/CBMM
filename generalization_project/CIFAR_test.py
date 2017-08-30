@@ -4,6 +4,7 @@ from math import ceil
 import matplotlib
 matplotlib.use('agg')
 from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 from os import path, makedirs
 import pickle
@@ -12,6 +13,7 @@ from utils import get_datasets, get_layer_reps, split_val
 
 from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import pdist, squareform
+from sklearn.decomposition import PCA
 
 import keras
 from keras.models import load_model
@@ -37,6 +39,12 @@ n_exemplars = 100
 model_representations = {}
 plot=True
 
+# comparison images
+compare_labels, compare_data = datasets[compare_dataset].values()
+(compare_x_train, compare_y_train), \
+(compare_x_test, compare_y_test) = compare_data
+num_compare_classes = len(np.unique(compare_y_test))
+
 # for each dataset extract representations of compare_dataset for each layer
 for i, dataset in enumerate(datasets.keys()):
     print('*'*80)
@@ -44,14 +52,9 @@ for i, dataset in enumerate(datasets.keys()):
     print('*'*80)
     (x_train, y_train), (x_test, y_test) = datasets[dataset]['data']
     (x_train, y_train), (x_val, y_val) = split_val(x_train, y_train)
-  
-    # comparison images
-    compare_labels, compare_data = datasets[compare_dataset].values()
-    (compare_x_train, compare_y_train), \
-        (compare_x_test, compare_y_test) = compare_data
+
     # reshape data
     num_classes = len(np.unique(y_test))
-    num_compare_classes = len(np.unique(compare_y_test))
     y_val = keras.utils.to_categorical(y_val, num_classes)
     
     # load model
@@ -65,7 +68,7 @@ for i, dataset in enumerate(datasets.keys()):
     model = load_model(model_file)
     
     # evaluate model
-    print('Calculating final accuracy on validation')
+    print('Calculating final x_val on validation')
     predictions = model.predict(x_val)
     accuracy = np.mean(np.argmax(predictions,1)==np.argmax(y_val,1))
     
@@ -112,8 +115,6 @@ for i, dataset in enumerate(datasets.keys()):
                             % (dataset, compare_dataset)))
     
     
-def tril(mat):
-    return mat[np.tril_indices_from(mat, -1)]
 
 overall_reps = []
 labels = []
@@ -127,10 +128,9 @@ colors = sns.color_palette('Reds',nl) \
 for model, val in model_representations.items()[0:3]:
     for layer in rep_layers:
         labels.append(model+'_'+layer)
-        overall_reps.append(tril(val[layer]['flat_mean']))
+        overall_reps.append(squareform(val[layer]['flat_mean']))
 overall_reps = np.vstack(overall_reps)
 
-from sklearn.decomposition import PCA
 pca = PCA(4)
 reduced=pca.fit_transform(overall_reps)
 
@@ -154,8 +154,6 @@ for i in range(nl):
 plt.legend()
 
 # 3d scatter
-from mpl_toolkits.mplot3d import Axes3D
-
 fig = plt.figure(figsize=(12,8))
 ax = fig.add_subplot(111, projection='3d')
 Axes3D.scatter(ax,reduced[:nl,0], reduced[:nl,1], 
@@ -176,3 +174,14 @@ ax.set_zlabel('PC 3')
 plt.legend()
 fig.savefig(path.join(output_dir,'Plots','compare_%s_3Dplot.png' \
                     % (compare_dataset)))
+
+# save RSA in pixel space
+avg_imgs = []
+for i  in range(num_compare_classes):
+    img_indices = np.where([j[0]==i for j in compare_y_train])[0]
+    avg_img = np.mean(compare_x_train[img_indices], 0)
+    avg_imgs.append(avg_img)
+avg_imgs = np.stack(avg_imgs,0).reshape((num_compare_classes, 32*32*3))['leaves']
+f = plt.figure(figsize=(12,8))
+sns.heatmap(np.corrcoef(avg_imgs))
+f.savefig(path.join(output_dir,'Plots','similarity_raw_img_space.png'))

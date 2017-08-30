@@ -1,4 +1,3 @@
-from contextlib import closing
 from matplotlib import pyplot as plt
 import matplotlib.patches as patches
 from math import ceil
@@ -6,8 +5,6 @@ import numpy as np
 from glob import glob
 from os import path
 from PIL import Image
-import tarfile
-from xml.etree import ElementTree as etree
 
 
 from keras.models import Model
@@ -104,6 +101,48 @@ def get_layer_reps(model, X, Y, n_exemplars):
                                     'mean': mean_reps}
     return layer_reps, layer_names
 
+def get_sample_coords(model, samples):
+    sample_coords = []
+    for s in range(samples):
+        coords = {}
+        shapes = [(l.name,l.output_shape[1:]) for l in model.layers]
+        for name, shape in shapes:
+            if len(shape)==3:
+                index = [np.random.randint(0,i) for i in shape[:2]]
+                coords[name] = index
+        sample_coords.append(coords)
+    return sample_coords
+    
+    
+def get_sample_layer_reps(model, sample_images, sample_coords):
+    # get coordinates for each sample to extract representation
+    # extract layers of interest
+    layers_of_interest = []
+    for layer in model.layers:
+        if (layer.name.find('dropout')==-1 and layer.name.find('input')==-1
+            and layer.name.find('flatten')==-1):
+            layers_of_interest.append(layer)
+    # get representations
+    layer_names = [i.name for i in layers_of_interest]
+    layer_reps = {}
+    for i, layer in enumerate(layers_of_interest):
+        # get representations for this layer
+        submodel = Model(inputs=model.inputs, outputs=layer.output)
+        sample_reps = submodel.predict(sample_images)
+        # sample one receptive field per sample
+        if len(sample_reps.shape) == 4:
+            # get coords for layer
+            coords = [i[layer.name] for i in sample_coords]
+            RF_reps = []
+            for i, rep in enumerate(sample_reps):
+                RF_rep = rep[coords[i][0],coords[i][1],:]
+                RF_reps.append(RF_rep)
+        else:
+            RF_reps = sample_reps
+        layer_reps[layer.name] = np.vstack(RF_reps)
+    return layer_reps, layer_names
+
+
 def plot_cifar10(X,Y,labels):
     """
     Plots images from dataset
@@ -127,70 +166,6 @@ def split_val(x_train, y_train):
     (x_train, y_train), (x_val, y_val) = (x_train[:split], y_train[:split]), \
                                          (x_train[split:], y_train[split:])
     return (x_train, y_train), (x_val, y_val)
-
-   
-# imgnet helper functions
-
-def get_imgnet_labels():
-    labels=np.genfromtxt('words.txt',dtype='str', delimiter='\t')
-    labels = {k:v for k,v in labels}
-    return labels
-
-def load_imgnet():
-    images = []
-    ids = []
-    bbs=[]
-    bb_labels=[]
-    resize_props = []
-    for filey in ['n00015388.tar', 'n00007846.tar']:
-        tar = tarfile.open("Data/%s" % filey)
-        members = tar.getmembers()
-        for member in members:
-            read_tar=tar.extractfile(member).read()
-            from cStringIO import StringIO
-            file_jpg = StringIO(read_tar)
-            img=Image.open(file_jpg)
-            resize_props.append([round(256.0/i,3) for i in img.size])
-            img = np.asarray(img.resize((256,256)))
-            if img.shape == (256,256,3):
-                ids.append(member.name.split('.')[0])
-                images.append(img)
-        tar.close()
-        
-        with tarfile.open("Data/%s.gz" % filey) as archive:
-            for member in archive:
-                if member.isreg() and member.name.endswith('.xml'): # regular xml file
-                    with closing(archive.extractfile(member)) as xmlfile:
-                        root = etree.parse(xmlfile).getroot()
-                        if filey.strip('.tar') in root[1].text:
-                            name = root[1].text
-                            image_i = ids.index(name)
-                            bb = [int(i.text) for i in root[5][4][0:4]]
-                            # scale bb based on image size change
-                            resize_prop = resize_props[image_i]
-                            bb[0]*=resize_prop[0]; bb[1]*=resize_prop[1]
-                            bb[2]*=resize_prop[0]; bb[3]*=resize_prop[1]
-                            bbs.append(bb)
-                            bb_labels.append(name)
-    images = np.stack(images,0)
-    bbs = np.stack(bbs,0)
-    return (images,ids), (bbs, bb_labels)
-    
-def plt_imgnet(images, ids, bbs, bb_labels):
-    semantic_labels = get_imgnet_labels()
-    bb_i = np.random.choice(range(len(bb_labels)))
-    image_i = ids.index(bb_labels[bb_i])
-    image = images[image_i,::]
-    bb = bbs[bb_i]
-    bb_coords = bb[0:2]
-    bb_width = (bb[2]-bb[0])
-    bb_height = (bb[3]-bb[1])
-    fig,ax = plt.subplots(1)
-    ax.imshow(image)
-    rect = patches.Rectangle(bb_coords,bb_width,bb_height,
-                             linewidth=3,edgecolor='r',facecolor='none')
-    ax.add_patch(rect)
-    plt.title(semantic_labels[ids[image_i]], fontsize=30)
 
 # tiny imgnet helper functions
 
@@ -225,7 +200,7 @@ def load_tiny_imgnet():
                 if imgset == 'val':
                     bbs_file = {a:((b,c,d,e),ID) for a,ID,b,c,d,e in bbs_file}
                 else:
-                    bbs_file = {a:((b,c,d,e)) for a,b,c,d,e in bbs_file}
+                    bbs_file = {a:((b,c,d,e),) for a,b,c,d,e in bbs_file}
                     ID = path.basename(folder)
             for image_f in glob(path.join(folder, 'images/*')):
                 if bbs_file is not None:
@@ -257,8 +232,6 @@ def load_tiny_imgnet():
     return (xtrain, classtrain, bbtrain), \
             (xval, classval, bbval), \
             (xtest, classtest, bbtest)
-            
-
     
 def plt_tiny_imgnet(images, ids, bbs):
     labels = load_tiny_imgnet_labels()

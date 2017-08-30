@@ -95,7 +95,6 @@ for data, load_fun in datasets.items():
     # fit model
     batch_size = 128
     epochs = 200
-    data_augmentation = True
     
     print('Training the model')
     start = time.time()
@@ -104,36 +103,26 @@ for data, load_fun in datasets.items():
                                               '%s_checkpoints' % data,
                                               '%s_weights.{epoch:03d}.h5' % data),
                                     save_weights_only=True, period=5)
+    print('Using real-time data augmentation.')
+    # This will do preprocessing and realtime data augmentation:
+    datagen = ImageDataGenerator(
+        zoom_range=.2,
+        rotation_range=0,  
+        width_shift_range=0.1, 
+        height_shift_range=0.1,
+        horizontal_flip=True,
+        seed = 202013) 
 
-    if not data_augmentation:
-        print('Not using data augmentation.')
-        out = model.fit(x_train, y_train,
-                          batch_size=batch_size,
-                          epochs=epochs,
-                          validation_data=(x_val, y_val),
-                          shuffle=True,
-                          callbacks=[save_callback],
-                          verbose=2)
-    else:
-        print('Using real-time data augmentation.')
-        # This will do preprocessing and realtime data augmentation:
-        datagen = ImageDataGenerator(
-            zoom_range=.2,
-            rotation_range=0,  
-            width_shift_range=0.1, 
-            height_shift_range=0.1,
-            horizontal_flip=True) 
+    # Compute quantities required for feature-wise normalization
+    # (std, mean, and principal components if ZCA whitening is applied).
+    datagen.fit(x_train)
     
-        # Compute quantities required for feature-wise normalization
-        # (std, mean, and principal components if ZCA whitening is applied).
-        datagen.fit(x_train)
-        
-        out = model.fit_generator(datagen.flow(x_train, y_train,
-                                     batch_size=batch_size),
-                        steps_per_epoch=x_train.shape[0] // batch_size,
-                        epochs=epochs,
-                        validation_data=(x_val, y_val),
-                        callbacks=[save_callback])
+    out = model.fit_generator(datagen.flow(x_train, y_train,
+                                 batch_size=batch_size),
+                    steps_per_epoch=x_train.shape[0] // batch_size,
+                    epochs=epochs,
+                    validation_data=(x_val, y_val),
+                    callbacks=[save_callback])
     end = time.time()
     print("Model took %0.2f seconds to train"%(end - start))
     model.save(path.join(output_dir, '%s_model.h5' % data))

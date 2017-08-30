@@ -40,6 +40,7 @@ output_dir = path.join('/scratch/users/ieisenbe/CBMM/output',
 makedirs(output_dir)
         
 # load data
+print("Loading Data")
 (xtrain, classtrain, bbtrain), \
 (xval, classval, bbval), \
 (xtest, classtest, bbtest) = load_tiny_imgnet()
@@ -54,85 +55,91 @@ classtrain = keras.utils.to_categorical(classtrain, num_classes)
 classval = keras.utils.to_categorical(classval, num_classes)
 
 
-# load model and weights or create model architecture
-try:
-    print('Loading model architecture')
-    base_model = load_model(path.join(output_dir, 'basemodel_architecture.h5'))
-    # change readout layer
-    base_out = base_model.layers[-2].output
-    readout = Dense(num_classes, activation='softmax', name='readout')
-    model = Model(inputs=base_model.input, outputs=readout(base_out))
+# create model architecture
+print('Model setup')
+image_shape = (64,64,3)
+input_img = Input(shape=image_shape)
+layer1 = get_conv_layer(32, input_img)
+layer2 = get_conv_layer(64, layer1)
+layer3 = get_conv_layer(128, layer2)
+flatten = Flatten()(layer3)
+full1 = Dense(512, activation='relu')(flatten)
+batch1 = BatchNormalization()(full1)
+drop1 = Dropout(.5)(batch1)
+full2 = Dense(256, activation='relu')(drop1)
+batch2 = BatchNormalization()(full2)
+drop2 = Dropout(.5)(batch2)
+# for classification
+readout_class = Dense(num_classes, activation='softmax', name='readout')(drop2)
+# for bounding box
+readout_bb = Dense(4, activation='linear', name='readout')(drop2)
 
-except IOError:
-    # set up model
-    print('Model setup')
-    image_shape = (64,64,3)
-    input_img = Input(shape=image_shape)
-    layer1 = get_conv_layer(32, input_img)
-    layer2 = get_conv_layer(64, layer1)
-    layer3 = get_conv_layer(128, layer2)
-    flatten = Flatten()(layer3)
-    full1 = Dense(512, activation='relu')(flatten)
-    batch1 = BatchNormalization()(full1)
-    drop1 = Dropout(.5)(batch1)
-    full2 = Dense(256, activation='relu')(drop1)
-    batch2 = BatchNormalization()(full2)
-    drop2 = Dropout(.5)(batch2)
-    readout = Dense(num_classes, activation='softmax', name='readout')(drop2)
-    model=Model(input_img, readout)
-    print('Saving base model architecture')
-    model.save(path.join(output_dir, 'basemodel_architecture.h5'))
-    
+class_model=Model(input_img, readout_class)
+bb_model=Model(input_img, readout_bb)
+
 opt = keras.optimizers.Adam(lr=0.001)
-model.compile(optimizer=opt, 
-          loss='categorical_crossentropy', 
-          metrics=['accuracy'])
+class_model.compile(optimizer=opt, 
+                      loss='categorical_crossentropy', 
+                      metrics=['accuracy'])
+bb_model.compile(optimizer=opt, 
+                  loss='mean_squared_error', 
+                  metrics=['accuracy'])
+
 
 # fit model
 batch_size = 300
-epochs = 1
-data_augmentation = True
+epochs = 200
 
 print('Training the model')
 start = time.time()
 makedirs(path.join(output_dir,'classification_checkpoints')) # save checkpoint dir
-save_callback = ModelCheckpoint(path.join(output_dir,
+save_classcallback = ModelCheckpoint(path.join(output_dir,
                                           'classification_checkpoints',
                                           'classification_weights.{epoch:03d}.h5'),
-                                save_weights_only=True, period=5)
+                                    save_weights_only=True, period=5)
+save_bbcallback = ModelCheckpoint(path.join(output_dir,
+                                          'bb_checkpoints',
+                                          'bb_weights.{epoch:03d}.h5'),
+                                    save_weights_only=True, period=5)
+# This will do preprocessing and realtime data augmentation:
+datagen = ImageDataGenerator(
+    zoom_range=.2,
+    rotation_range=0,  
+    width_shift_range=0.1, 
+    height_shift_range=0.1,
+    horizontal_flip=True, 
+    seed = 131301) 
 
-if not data_augmentation:
-    print('Not using data augmentation.')
-    out = model.fit(xtrain, classtrain,
-                      batch_size=batch_size,
-                      epochs=epochs,
-                      validation_data=(xval, classval),
-                      shuffle=True,
-                      callbacks=[save_callback],
-                      verbose=2)
-else:
-    print('Using real-time data augmentation.')
-    # This will do preprocessing and realtime data augmentation:
-    datagen = ImageDataGenerator(
-        zoom_range=.2,
-        rotation_range=0,  
-        width_shift_range=0.1, 
-        height_shift_range=0.1,
-        horizontal_flip=True) 
+# Compute quantities required for feature-wise normalization
+# (std, mean, and principal components if ZCA whitening is applied).
+datagen.fit(xtrain)
 
-    # Compute quantities required for feature-wise normalization
-    # (std, mean, and principal components if ZCA whitening is applied).
-    datagen.fit(xtrain)
-    
-    out = model.fit_generator(datagen.flow(xtrain, classtrain,
-                                 batch_size=batch_size),
-                    steps_per_epoch=xtrain.shape[0] // batch_size,
-                    epochs=epochs,
-                    validation_data=(xval, classval),
-                    callbacks=[save_callback])
-end = time.time()
-print("Model took %0.2f seconds to train"%(end - start))
-model.save(path.join(output_dir, 'classification_model.h5'))
-pickle.dump(out.history, open(path.join(output_dir, 
+class_out = class_model.fit_generator(datagen.flow(xtrain, classtrain,
+                                                   batch_size=batch_size),
+                                    steps_per_epoch=xtrain.shape[0] // batch_size,
+                                    epochs=epochs,
+                                    validation_data=(xval, classval),
+                                    callbacks=[save_classcallback])
+
+class_model.save(path.join(output_dir, 'classification_model.h5'))
+pickle.dump(class_out.history, open(path.join(output_dir, 
                                         'classification_modelhistory.pkl'), 
                                         'wb'))
+
+datagen.fit(xtrain)
+bb_out = bb_model.fit_generator(datagen.flow(xtrain, bbtrain,
+                                             batch_size=batch_size),
+                                steps_per_epoch=xtrain.shape[0] // batch_size,
+                                epochs=epochs,
+                                validation_data=(xval, bbval),
+                                callbacks=[save_bbcallback])
+
+bb_model.save(path.join(output_dir, 'bb_model.h5'))
+pickle.dump(bb_out.history, open(path.join(output_dir, 
+                                        'bb_modelhistory.pkl'), 
+                                        'wb'))
+
+end = time.time()
+print("Model took %0.2f seconds to train"%(end - start))
+
+
