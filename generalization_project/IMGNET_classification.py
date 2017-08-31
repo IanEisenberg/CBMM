@@ -111,6 +111,7 @@ datagen = ImageDataGenerator(
 
 
 for name, val in models.items():
+    print("Training %s" % name)
     model, (ytrain, yval, ytest) = val.values()
     
     # compile model
@@ -141,7 +142,7 @@ for name, val in models.items():
                               validation_data=(xval, yval),
                               callbacks=[save_classcallback])
 
-    model.save(path.join(output_dir, '%s.h5' % name))
+    model.save(path.join(output_dir, '%s_model.h5' % name))
     pickle.dump(out.history, open(path.join(output_dir, 
                                             '%s_modelhistory.pkl' % name), 
                                             'wb'))

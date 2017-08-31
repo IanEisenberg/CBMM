@@ -1,17 +1,14 @@
 # load imports
 import h5py
 import itertools
-from math import ceil
 import matplotlib
 matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import numpy as np
 from os import path, makedirs
-import pickle
 import seaborn as sns
 from utils import get_datasets, get_sample_layer_reps, get_sample_coords, split_val
 
-from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import pdist, squareform
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
@@ -19,19 +16,18 @@ from sklearn.manifold import TSNE
 import keras
 from keras.models import load_model
 
+# load datasets
 datasets = get_datasets()
         
 # setup
-analysis_dir = '29-08-2017_17-07-57'
+analysis_dir = '29-08-2017_17-52-16'
 output_dir = path.join('output',analysis_dir)
 try:
     makedirs(output_dir)
     makedirs(path.join(output_dir,'Plots'))
 except OSError:
     pass
-    
-# local directory
-#input_dir = path.join('output', analysis_dir)
+
 # for sherlock
 input_dir = path.join('/mnt/Sherlock_Scratch/CBMM/output', analysis_dir)
 
@@ -95,18 +91,15 @@ for i, dataset in enumerate(datasets.keys()):
 
 print('Plotting')
 pca = PCA(2)
-color_palette = sns.color_palette('hls',20)
-colors = [color_palette[i[0]] for i in compare_y_train]
-layer_reps = model_reps['cifar100_arbitrary']
 f = plt.figure(figsize=(30,20))
 for i, name in enumerate(layer_names[:-1]):
     layers = [(k,v[name]) for k,v in model_reps.items()]
     plt.subplot(5,4,i+1)
     for j, (model, rep) in enumerate(layers):
-        if j<10:
+        if j==0:
             pca.fit(rep)
         PCA_rep = pca.transform(rep)
-        plt.scatter(PCA_rep[:,0], PCA_rep[:,1], c=['m','c','r'][j],
+        plt.scatter(PCA_rep[:,0], PCA_rep[:,1], c=['m','c','r','b'][j],
                     label=model, alpha=.3)
     plt.title(name,fontsize=20)
     if i==0:
@@ -114,29 +107,22 @@ for i, name in enumerate(layer_names[:-1]):
 f.savefig(path.join(output_dir, 'Plots', 
                     'sample_layer_model_distributions.png'))
 
-print('Plotting')
-pca = PCA(2)
+tsne = TSNE(2)
 color_palette = sns.color_palette('hls',20)
 colors = [color_palette[i[0]] for i in compare_y_train]
-layer_reps = model_reps['cifar100_arbitrary']
-f = plt.figure(figsize=(30,20))
-for i, name in enumerate(layer_names[:-1]):
-    layers = [(k,v[name]) for k,v in model_reps.items()]
-    plt.subplot(5,4,i+1)
-    layer_mat = np.zeros((compare_samples*len(layers),3))
-    for j, (model, rep) in enumerate(layers):
-        if j==0:
-            pca.fit(rep)
-        PCA_rep = pca.transform(rep)
-        plt.scatter(PCA_rep[:,0], PCA_rep[:,1], c=['m','c','r'][j],
-                    label=model, alpha=.4)
-        layer_mat[j*1000:(j+1)*1000,:2] = PCA_rep
-        layer_mat[j*1000:(j+1)*1000,2] = j
-    plt.title(name,fontsize=20)
-    if i==0:
-        plt.legend()
-f.savefig(path.join(output_dir, 'Plots', 
-                    'sample_layer_model_distributions.png'))
+for model_name, model_rep in model_reps.items():
+    f = plt.figure(figsize=(30,20))
+    for i, name in enumerate(layer_names[:-1]):
+        plt.subplot(5,4,i+1)
+        rep = model_rep[name]
+        tsne_rep = tsne.fit_transform(rep)
+        plt.scatter(tsne_rep[:,0], tsne_rep[:,1], c=colors,
+                        label=model, alpha=.4)
+        plt.title(name,fontsize=20)
+        if i==0:
+            plt.legend()
+    f.savefig(path.join(output_dir, 'Plots', 
+                        '%s_layer_tsne.png' % model_name))
 
 
 plot_distances = []
